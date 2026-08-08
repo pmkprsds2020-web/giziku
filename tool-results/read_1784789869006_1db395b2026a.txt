@@ -1,0 +1,965 @@
+     1→"use client";
+     2→
+     3→import { createClient } from "@/lib/supabase/client";
+     4→
+     5→// ---------------------------------------------------------------------
+     6→// CareLivia — Frontend Supabase Data Layer (Browser Client)
+     7→// ALL reads go directly to Supabase PostgreSQL via browser client.
+     8→// No API routes for reads — eliminates 404s and ID mismatches.
+     9→//
+    10→// Writes also go directly to Supabase (RLS requires authenticated session).
+    11→// Only AI/complex operations use API routes (meal-plan generate, exercise, etc.)
+    12→// ---------------------------------------------------------------------
+    13→
+    14→let supabaseClient: ReturnType<typeof createClient> | null = null;
+    15→
+    16→function getSupabase() {
+    17→  if (!supabaseClient) {
+    18→    supabaseClient = createClient();
+    19→  }
+    20→  return supabaseClient;
+    21→}
+    22→
+    23→// ---------------------------------------------------------------------
+    24→// PATIENTS — Direct Supabase reads
+    25→// ---------------------------------------------------------------------
+    26→export async function supabaseFetchPatients(): Promise<any[]> {
+    27→  const supabase = getSupabase();
+    28→  const { data, error } = await supabase
+    29→    .from("patients")
+    30→    .select("*, diagnoses(*)")
+    31→    .is("deleted_at", null)
+    32→    .order("created_at", { ascending: false });
+    33→
+    34→  if (error) {
+    35→    console.error("[frontend] fetchPatients error:", error);
+    36→    throw new Error(error.message);
+    37→  }
+    38→
+    39→  return (data || []).map((p: any) => ({
+    40→    id: p.id,
+    41→    mrn: p.mrn,
+    42→    name: p.name,
+    43→    gender: p.gender,
+    44→    birthDate: p.birth_date,
+    45→    phone: p.phone,
+    46→    address: p.address,
+    47→    religion: p.religion,
+    48→    bloodType: p.blood_type,
+    49→    allergy: p.allergy,
+    50→    height: p.height,
+    51→    weight: p.weight,
+    52→    isPregnant: p.is_pregnant,
+    53→    pregnancyTrimester: p.pregnancy_trimester,
+    54→    isLactating: p.is_lactating,
+    55→    lactationMonth: p.lactation_month,
+    56→    notes: p.notes,
+    57→    diagnoses: (p.diagnoses || []).filter((d: any) => d.active).map((d: any) => ({
+    58→      id: d.id,
+    59→      type: d.type,
+    60→      active: d.active,
+    61→    })),
+    62→  }));
+    63→}
+    64→
+    65→export async function supabaseFetchPatient(id: string): Promise<any | null> {
+    66→  const supabase = getSupabase();
+    67→  const { data, error } = await supabase
+    68→    .from("patients")
+    69→    .select("*, diagnoses(*), nutrition_assessments(*), weight_records(*)")
+    70→    .eq("id", id)
+    71→    .is("deleted_at", null)
+    72→    .single();
+    73→
+    74→  if (error) {
+    75→    console.error("[frontend] fetchPatient error:", error);
+    76→    return null;
+    77→  }
+    78→
+    79→  return {
+    80→    id: data.id,
+    81→    mrn: data.mrn,
+    82→    name: data.name,
+    83→    gender: data.gender,
+    84→    birthDate: data.birth_date,
+    85→    phone: data.phone,
+    86→    address: data.address,
+    87→    religion: data.religion,
+    88→    bloodType: data.blood_type,
+    89→    allergy: data.allergy,
+    90→    height: data.height,
+    91→    weight: data.weight,
+    92→    isPregnant: data.is_pregnant,
+    93→    pregnancyTrimester: data.pregnancy_trimester,
+    94→    isLactating: data.is_lactating,
+    95→    lactationMonth: data.lactation_month,
+    96→    notes: data.notes,
+    97→    diagnoses: (data.diagnoses || []).map((d: any) => ({
+    98→      id: d.id,
+    99→      patientId: d.patient_id,
+   100→      type: d.type,
+   101→      icd: d.icd,
+   102→      active: d.active,
+   103→    })),
+   104→    assessments: (data.nutrition_assessments || []).map((a: any) => ({
+   105→      id: a.id,
+   106→      patientId: a.patient_id,
+   107→      recordedAt: a.recorded_at,
+   108→      must: a.must,
+   109→      mustScore: a.must_score,
+   110→      sga: a.sga,
+   111→      nrs2002: a.nrs2002,
+   112→      nrsScore: a.nrs_score,
+   113→      ecog: a.ecog,
+   114→      barthel: a.barthel,
+   115→      activity: a.activity,
+   116→      stress: a.stress,
+   117→    })),
+   118→    weightRecords: (data.weight_records || []).map((w: any) => ({
+   119→      id: w.id,
+   120→      patientId: w.patient_id,
+   121→      date: w.date,
+   122→      weight: w.weight,
+   123→      height: w.height,
+   124→      bmi: w.bmi,
+   125→      bmiCategory: w.bmi_category,
+   126→      note: w.note,
+   127→    })),
+   128→  };
+   129→}
+   130→
+   131→// ---------------------------------------------------------------------
+   132→// FOODS — Direct Supabase reads (anon can read foods)
+   133→// ---------------------------------------------------------------------
+   134→export async function supabaseFetchFoods(params?: {
+   135→  q?: string;
+   136→  categoryId?: string;
+   137→  highProtein?: boolean;
+   138→  lowGi?: boolean;
+   139→  lowSodium?: boolean;
+   140→  highFiber?: boolean;
+   141→}): Promise<{ foods: any[]; categories: any[] }> {
+   142→  const supabase = getSupabase();
+   143→
+   144→  // Fetch foods with category
+   145→  let query = supabase
+   146→    .from("foods")
+   147→    .select("*, food_categories(*)")
+   148→    .is("deleted_at", null)
+   149→    .eq("approved", true)
+   150→    .order("name")
+   151→    .limit(200);
+   152→
+   153→  if (params?.q) {
+   154→    query = query.or(`name.ilike.%${params.q}%,english_name.ilike.%${params.q}%,tags.ilike.%${params.q}%`);
+   155→  }
+   156→
+   157→  const { data: foods, error: foodsError } = await query;
+   158→  if (foodsError) console.error("[frontend] fetchFoods error:", foodsError);
+   159→
+   160→  // Fetch categories
+   161→  const { data: categories, error: catError } = await supabase
+   162→    .from("food_categories")
+   163→    .select("*")
+   164→    .order("name");
+   165→  if (catError) console.error("[frontend] fetchCategories error:", catError);
+   166→
+   167→  // Map foods to camelCase
+   168→  let mapped = (foods || []).map((f: any) => ({
+   169→    id: f.id,
+   170→    name: f.name,
+   171→    englishName: f.english_name,
+   172→    categoryId: f.category_id,
+   173→    category: f.food_categories ? {
+   174→      id: f.food_categories.id,
+   175→      name: f.food_categories.name,
+   176→      slug: f.food_categories.slug,
+   177→      icon: f.food_categories.icon,
+   178→    } : null,
+   179→    energy: f.energy,
+   180→    protein: f.protein,
+   181→    fat: f.fat,
+   182→    carb: f.carb,
+   183→    fiber: f.fiber,
+   184→    sodium: f.sodium,
+   185→    potassium: f.potassium,
+   186→    calcium: f.calcium,
+   187→    iron: f.iron,
+   188→    gi: f.gi,
+   189→    urt: f.urt,
+   190→    urtGram: f.urt_gram,
+   191→    price: f.price,
+   192→    tags: f.tags,
+   193→    source: f.source,
+   194→  }));
+   195→
+   196→  // Apply filters
+   197→  if (params?.categoryId) mapped = mapped.filter((f) => f.categoryId === params.categoryId);
+   198→  if (params?.highProtein) mapped = mapped.filter((f) => f.protein >= 10);
+   199→  if (params?.lowGi) mapped = mapped.filter((f) => f.gi < 55 && f.gi > 0);
+   200→  if (params?.lowSodium) mapped = mapped.filter((f) => f.sodium <= 100);
+   201→  if (params?.highFiber) mapped = mapped.filter((f) => f.fiber >= 3);
+   202→
+   203→  // Count foods per category
+   204→  const countMap = new Map<string, number>();
+   205→  for (const f of mapped) {
+   206→    if (f.categoryId) countMap.set(f.categoryId, (countMap.get(f.categoryId) || 0) + 1);
+   207→  }
+   208→
+   209→  const mappedCategories = (categories || []).map((c: any) => ({
+   210→    id: c.id,
+   211→    name: c.name,
+   212→    slug: c.slug,
+   213→    icon: c.icon,
+   214→    _count: { foods: countMap.get(c.id) || 0 },
+   215→  }));
+   216→
+   217→  return { foods: mapped, categories: mappedCategories };
+   218→}
+   219→
+   220→// ---------------------------------------------------------------------
+   221→// DASHBOARD — Direct Supabase count queries + patient summaries
+   222→// ---------------------------------------------------------------------
+   223→export async function supabaseFetchDashboard(): Promise<any> {
+   224→  const supabase = getSupabase();
+   225→
+   226→  // Count queries
+   227→  const [patientsCount, foodsCount, mealPlansCount, foodRecordsData] = await Promise.all([
+   228→    supabase.from("patients").select("id", { count: "exact", head: true }).is("deleted_at", null),
+   229→    supabase.from("foods").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("approved", true),
+   230→    supabase.from("meal_plans").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "FINAL"),
+   231→    supabase.from("food_records").select("id, cal, date", { count: "exact" }).limit(500),
+   232→  ]);
+   233→
+   234→  // Fetch recent patients with diagnoses for summaries
+   235→  const { data: patients } = await supabase
+   236→    .from("patients")
+   237→    .select("id, mrn, name, height, weight, diagnoses(*)")
+   238→    .is("deleted_at", null)
+   239→    .order("created_at", { ascending: false })
+   240→    .limit(10);
+   241→
+   242→  // Fetch recent meal plans with patient info
+   243→  const { data: recentPlansRaw } = await supabase
+   244→    .from("meal_plans")
+   245→    .select("id, date, total_cal, compliance, status, patients(name, mrn)")
+   246→    .is("deleted_at", null)
+   247→    .order("date", { ascending: false })
+   248→    .limit(10);
+   249→
+   250→  const todayStart = new Date();
+   251→  todayStart.setHours(0, 0, 0, 0);
+   252→  const todayRecords = (foodRecordsData.data || []).filter((r: any) => new Date(r.date) >= todayStart);
+   253→  const todayCalories = todayRecords.reduce((sum: number, r: any) => sum + (r.cal || 0), 0);
+   254→
+   255→  // Build patient summaries
+   256→  const patientSummaries = (patients || []).map((p: any) => {
+   257→    const bmi = p.height && p.weight && p.height > 0
+   258→      ? p.weight / Math.pow(p.height / 100, 2)
+   259→      : null;
+   260→    const birthYear = parseInt(String(p.mrn).substring(0, 4)) || 1980;
+   261→    return {
+   262→      id: p.id,
+   263→      mrn: p.mrn,
+   264→      name: p.name,
+   265→      bmi: bmi ? Math.round(bmi * 10) / 10 : null,
+   266→      diagnoses: (p.diagnoses || []).filter((d: any) => d.active).map((d: any) => d.type),
+   267→    };
+   268→  });
+   269→
+   270→  // Build recent plans
+   271→  const recentPlans = (recentPlansRaw || []).map((mp: any) => ({
+   272→    id: mp.id,
+   273→    date: mp.date,
+   274→    totalCal: mp.total_cal,
+   275→    compliance: mp.compliance,
+   276→    status: mp.status,
+   277→    patientName: mp.patients?.name || "Unknown",
+   278→    patientMrn: mp.patients?.mrn || "",
+   279→  }));
+   280→
+   281→  // Diagnosis distribution
+   282→  const diagnosisDist: Record<string, number> = {};
+   283→  for (const p of (patients || [])) {
+   284→    for (const d of (p.diagnoses || [])) {
+   285→      if (d.active) {
+   286→        diagnosisDist[d.type] = (diagnosisDist[d.type] || 0) + 1;
+   287→      }
+   288→    }
+   289→  }
+   290→
+   291→  return {
+   292→    totalPatients: patientsCount.count ?? 0,
+   293→    activeMealPlans: mealPlansCount.count ?? 0,
+   294→    totalFoods: foodsCount.count ?? 0,
+   295→    todayCalTotal: Math.round(todayCalories),
+   296→    todayRecords: todayRecords.length,
+   297→    patientSummaries,
+   298→    recentPlans,
+   299→    diagnosisDistribution: diagnosisDist,
+   300→  };
+   301→}
+   302→
+   303→// ---------------------------------------------------------------------
+   304→// WEIGHT RECORDS — Direct Supabase
+   305→// ---------------------------------------------------------------------
+   306→export async function supabaseFetchWeightRecords(patientId: string): Promise<any> {
+   307→  const supabase = getSupabase();
+   308→  const { data, error } = await supabase
+   309→    .from("weight_records")
+   310→    .select("*")
+   311→    .eq("patient_id", patientId)
+   312→    .order("date", { ascending: true })
+   313→    .limit(100);
+   314→
+   315→  if (error) {
+   316→    console.error("[frontend] fetchWeightRecords error:", error);
+   317→    return { records: [], summary: null, periodChanges: [], alerts: [] };
+   318→  }
+   319→
+   320→  const records = (data || []).map((r: any) => ({
+   321→    id: r.id,
+   322→    patientId: r.patient_id,
+   323→    date: r.date,
+   324→    weight: r.weight,
+   325→    height: r.height,
+   326→    bmi: r.bmi,
+   327→    bmiCategory: r.bmi_category,
+   328→    weightChange: r.weight_change,
+   329→    weightChangePct: r.weight_change_pct,
+   330→    note: r.note,
+   331→  }));
+   332→
+   333→  // Compute summary
+   334→  const latest = records[records.length - 1] || null;
+   335→  const first = records[0] || null;
+   336→  const totalChange = latest && first ? Math.round((latest.weight - first.weight) * 10) / 10 : 0;
+   337→  const totalPct = latest && first && first.weight > 0
+   338→    ? Math.round(((latest.weight - first.weight) / first.weight) * 1000) / 10
+   339→    : 0;
+   340→
+   341→  return {
+   342→    records,
+   343→    summary: latest ? {
+   344→      latestWeight: latest.weight,
+   345→      latestBMI: latest.bmi,
+   346→      latestBMICategory: latest.bmiCategory,
+   347→      latestDate: latest.date,
+   348→      totalChange,
+   349→      totalPct,
+   350→      recordCount: records.length,
+   351→    } : null,
+   352→    periodChanges: [
+   353→      { label: "7 hari", change: null, pct: null },
+   354→      { label: "30 hari", change: null, pct: null },
+   355→      { label: "3 bulan", change: null, pct: null },
+   356→      { label: "6 bulan", change: null, pct: null },
+   357→      { label: "1 tahun", change: null, pct: null },
+   358→    ],
+   359→    alerts: [],
+   360→  };
+   361→}
+   362→
+   363→export async function supabaseAddWeightRecord(data: {
+   364→  patientId: string;
+   365→  weight: number;
+   366→  height?: number | null;
+   367→  date?: string;
+   368→  note?: string;
+   369→}): Promise<any> {
+   370→  const supabase = getSupabase();
+   371→  const height = data.height ?? null;
+   372→  const bmi = height ? Math.round((data.weight / Math.pow(height / 100, 2)) * 10) / 10 : null;
+   373→  const bmiCategory = bmi
+   374→    ? bmi < 18.5 ? "UNDERWEIGHT" : bmi < 23 ? "NORMAL" : bmi < 25 ? "OVERWEIGHT" : "OBESE"
+   375→    : null;
+   376→
+   377→  const { data: record, error } = await supabase
+   378→    .from("weight_records")
+   379→    .insert({
+   380→      patient_id: data.patientId,
+   381→      date: data.date ?? new Date().toISOString(),
+   382→      weight: data.weight,
+   383→      height,
+   384→      bmi,
+   385→      bmi_category: bmiCategory,
+   386→      note: data.note ?? "",
+   387→    })
+   388→    .select()
+   389→    .single();
+   390→
+   391→  if (error) throw new Error(error.message);
+   392→
+   393→  // Update patient's current weight
+   394→  await supabase
+   395→    .from("patients")
+   396→    .update({ weight: data.weight, height: height ?? undefined })
+   397→    .eq("id", data.patientId);
+   398→
+   399→  return record;
+   400→}
+   401→
+   402→export async function supabaseDeleteWeightRecord(id: string): Promise<void> {
+   403→  const supabase = getSupabase();
+   404→  const { error } = await supabase.from("weight_records").delete().eq("id", id);
+   405→  if (error) throw new Error(error.message);
+   406→}
+   407→
+   408→// ---------------------------------------------------------------------
+   409→// NUTRITION ASSESSMENTS — Direct Supabase
+   410→// ---------------------------------------------------------------------
+   411→export async function supabaseFetchAssessments(patientId: string): Promise<any[]> {
+   412→  const supabase = getSupabase();
+   413→  const { data, error } = await supabase
+   414→    .from("nutrition_assessments")
+   415→    .select("*")
+   416→    .eq("patient_id", patientId)
+   417→    .order("recorded_at", { ascending: false })
+   418→    .limit(20);
+   419→
+   420→  if (error) {
+   421→    console.error("[frontend] fetchAssessments error:", error);
+   422→    return [];
+   423→  }
+   424→
+   425→  return (data || []).map((a: any) => ({
+   426→    id: a.id,
+   427→    patientId: a.patient_id,
+   428→    recordedAt: a.recorded_at,
+   429→    must: a.must,
+   430→    mustScore: a.must_score,
+   431→    sga: a.sga,
+   432→    nrs2002: a.nrs2002,
+   433→    nrsScore: a.nrs_score,
+   434→    mna: a.mna,
+   435→    mnaScore: a.mna_score,
+   436→    pps: a.pps,
+   437→    ecog: a.ecog,
+   438→    barthel: a.barthel,
+   439→    frailty: a.frailty,
+   440→    frailtyScore: a.frailty_score,
+   441→    fallRisk: a.fall_risk,
+   442→    handGrip: a.hand_grip,
+   443→    calfCirc: a.calf_circ,
+   444→    activity: a.activity,
+   445→    stress: a.stress,
+   446→    notes: a.notes,
+   447→  }));
+   448→}
+   449→
+   450→export async function supabaseCreateAssessment(data: any): Promise<any> {
+   451→  const supabase = getSupabase();
+   452→  const { data: record, error } = await supabase
+   453→    .from("nutrition_assessments")
+   454→    .insert({
+   455→      patient_id: data.patientId,
+   456→      recorded_at: new Date().toISOString(),
+   457→      must: data.must,
+   458→      must_score: data.mustScore,
+   459→      sga: data.sga,
+   460→      nrs2002: data.nrs2002,
+   461→      nrs_score: data.nrsScore,
+   462→      mna: data.mna,
+   463→      mna_score: data.mnaScore,
+   464→      pps: data.pps,
+   465→      ecog: data.ecog,
+   466→      barthel: data.barthel,
+   467→      frailty: data.frailty,
+   468→      frailty_score: data.frailtyScore,
+   469→      fall_risk: data.fallRisk,
+   470→      hand_grip: data.handGrip,
+   471→      calf_circ: data.calfCirc,
+   472→      activity: data.activity,
+   473→      stress: data.stress,
+   474→      notes: data.notes ?? "",
+   475→    })
+   476→    .select()
+   477→    .single();
+   478→
+   479→  if (error) throw new Error(error.message);
+   480→  return record;
+   481→}
+   482→
+   483→export async function supabaseDeleteAssessment(id: string): Promise<void> {
+   484→  const supabase = getSupabase();
+   485→  const { error } = await supabase.from("nutrition_assessments").delete().eq("id", id);
+   486→  if (error) throw new Error(error.message);
+   487→}
+   488→
+   489→// ---------------------------------------------------------------------
+   490→// FOOD RECORDS — Direct Supabase
+   491→// ---------------------------------------------------------------------
+   492→export async function supabaseFetchFoodRecords(patientId: string, date?: string): Promise<any[]> {
+   493→  const supabase = getSupabase();
+   494→  let query = supabase
+   495→    .from("food_records")
+   496→    .select("*, foods(*, food_categories(*))")
+   497→    .eq("patient_id", patientId)
+   498→    .order("date", { ascending: false })
+   499→    .limit(100);
+   500→
+   501→  if (date) {
+   502→    const start = new Date(date);
+   503→    start.setHours(0, 0, 0, 0);
+   504→    const end = new Date(date);
+   505→    end.setHours(23, 59, 59, 999);
+   506→    query = query.gte("date", start.toISOString()).lte("date", end.toISOString());
+   507→  }
+   508→
+   509→  const { data, error } = await query;
+   510→  if (error) {
+   511→    console.error("[frontend] fetchFoodRecords error:", error);
+   512→    return [];
+   513→  }
+   514→
+   515→  return (data || []).map((r: any) => ({
+   516→    id: r.id,
+   517→    patientId: r.patient_id,
+   518→    date: r.date,
+   519→    slot: r.slot,
+   520→    foodId: r.food_id,
+   521→    amount: r.amount,
+   522→    consumed: r.consumed,
+   523→    cal: r.cal,
+   524→    protein: r.protein,
+   525→    fat: r.fat,
+   526→    carb: r.carb,
+   527→    fiber: r.fiber,
+   528→    sodium: r.sodium,
+   529→    notes: r.notes,
+   530→    food: r.foods ? {
+   531→      id: r.foods.id,
+   532→      name: r.foods.name,
+   533→      energy: r.foods.energy,
+   534→      protein: r.foods.protein,
+   535→      fat: r.foods.fat,
+   536→      carb: r.foods.carb,
+   537→      fiber: r.foods.fiber,
+   538→      category: r.foods.food_categories ? {
+   539→        slug: r.foods.food_categories.slug,
+   540→        name: r.foods.food_categories.name,
+   541→      } : null,
+   542→    } : null,
+   543→  }));
+   544→}
+   545→
+   546→export async function supabaseAddFoodRecord(data: {
+   547→  patientId: string;
+   548→  foodId: string;
+   549→  slot: string;
+   550→  amount: number;
+   551→  consumed?: number;
+   552→  date?: string;
+   553→  notes?: string;
+   554→}): Promise<any> {
+   555→  const supabase = getSupabase();
+   556→
+   557→  // Fetch food to compute nutrition
+   558→  const { data: food } = await supabase
+   559→    .from("foods")
+   560→    .select("*")
+   561→    .eq("id", data.foodId)
+   562→    .single();
+   563→
+   564→  if (!food) throw new Error("Makanan tidak ditemukan");
+   565→
+   566→  const ratio = data.amount / 100;
+   567→  const consumedRatio = (data.consumed ?? 100) / 100;
+   568→
+   569→  const { data: record, error } = await supabase
+   570→    .from("food_records")
+   571→    .insert({
+   572→      patient_id: data.patientId,
+   573→      food_id: data.foodId,
+   574→      slot: data.slot.toUpperCase(),
+   575→      amount: data.amount,
+   576→      consumed: data.consumed ?? 100,
+   577→      date: data.date ?? new Date().toISOString(),
+   578→      cal: food.energy * ratio * consumedRatio,
+   579→      protein: food.protein * ratio * consumedRatio,
+   580→      fat: food.fat * ratio * consumedRatio,
+   581→      carb: food.carb * ratio * consumedRatio,
+   582→      fiber: food.fiber * ratio * consumedRatio,
+   583→      sodium: food.sodium * ratio * consumedRatio,
+   584→      notes: data.notes ?? "",
+   585→    })
+   586→    .select()
+   587→    .single();
+   588→
+   589→  if (error) throw new Error(error.message);
+   590→  return record;
+   591→}
+   592→
+   593→export async function supabaseDeleteFoodRecord(id: string): Promise<void> {
+   594→  const supabase = getSupabase();
+   595→  const { error } = await supabase.from("food_records").delete().eq("id", id);
+   596→  if (error) throw new Error(error.message);
+   597→}
+   598→
+   599→// ---------------------------------------------------------------------
+   600→// MEAL PLANS — Direct Supabase reads
+   601→// ---------------------------------------------------------------------
+   602→export async function supabaseFetchMealPlans(patientId?: string): Promise<any[]> {
+   603→  const supabase = getSupabase();
+   604→  let query = supabase
+   605→    .from("meal_plans")
+   606→    .select("*, patients(*, diagnoses(*)), nutrition_presets(*), meal_plan_items(*, foods(*, food_categories(*)))")
+   607→    .is("deleted_at", null)
+   608→    .order("date", { ascending: false })
+   609→    .limit(20);
+   610→
+   611→  if (patientId) {
+   612→    query = query.eq("patient_id", patientId);
+   613→  }
+   614→
+   615→  const { data, error } = await query;
+   616→  if (error) {
+   617→    console.error("[frontend] fetchMealPlans error:", error);
+   618→    return [];
+   619→  }
+   620→
+   621→  return (data || []).map((p: any) => ({
+   622→    id: p.id,
+   623→    patientId: p.patient_id,
+   624→    presetId: p.preset_id,
+   625→    date: p.date,
+   626→    targetCal: p.target_cal,
+   627→    targetProtein: p.target_protein,
+   628→    targetFat: p.target_fat,
+   629→    targetCarb: p.target_carb,
+   630→    targetFiber: p.target_fiber,
+   631→    targetSodium: p.target_sodium,
+   632→    totalCal: p.total_cal,
+   633→    totalProtein: p.total_protein,
+   634→    totalFat: p.total_fat,
+   635→    totalCarb: p.total_carb,
+   636→    totalFiber: p.total_fiber,
+   637→    totalSodium: p.total_sodium,
+   638→    compliance: p.compliance,
+   639→    status: p.status,
+   640→    aiModel: p.ai_model,
+   641→    aiReasoning: p.ai_reasoning,
+   642→    preset: p.nutrition_presets ? {
+   643→      id: p.nutrition_presets.id,
+   644→      name: p.nutrition_presets.name,
+   645→      totalCal: p.nutrition_presets.total_cal,
+   646→    } : null,
+   647→    patient: p.patients ? {
+   648→      id: p.patients.id,
+   649→      name: p.patients.name,
+   650→      mrn: p.patients.mrn,
+   651→      diagnoses: (p.patients.diagnoses || []).map((d: any) => ({ type: d.type, active: d.active })),
+   652→    } : null,
+   653→    items: (p.meal_plan_items || []).map((i: any) => ({
+   654→      id: i.id,
+   655→      slot: i.slot,
+   656→      foodId: i.food_id,
+   657→      amount: i.amount,
+   658→      cal: i.cal,
+   659→      protein: i.protein,
+   660→      fat: i.fat,
+   661→      carb: i.carb,
+   662→      fiber: i.fiber,
+   663→      sodium: i.sodium,
+   664→      food: i.foods ? {
+   665→        id: i.foods.id,
+   666→        name: i.foods.name,
+   667→        category: i.foods.food_categories ? { slug: i.foods.food_categories.slug } : null,
+   668→      } : null,
+   669→    })),
+   670→  }));
+   671→}
+   672→
+   673→// ---------------------------------------------------------------------
+   674→// NUTRITION PRESETS — Direct Supabase
+   675→// ---------------------------------------------------------------------
+   676→export async function supabaseFetchPresets(patientId?: string): Promise<any[]> {
+   677→  const supabase = getSupabase();
+   678→  let query = supabase
+   679→    .from("nutrition_presets")
+   680→    .select("*")
+   681→    .is("deleted_at", null)
+   682→    .order("is_favorite", { ascending: false })
+   683→    .order("created_at", { ascending: true });
+   684→
+   685→  if (patientId) {
+   686→    query = query.or(`patient_id.eq.${patientId},is_template.eq.true`);
+   687→  }
+   688→
+   689→  const { data, error } = await query;
+   690→  if (error) {
+   691→    console.error("[frontend] fetchPresets error:", error);
+   692→    return [];
+   693→  }
+   694→
+   695→  return (data || []).map((p: any) => ({
+   696→    id: p.id,
+   697→    patientId: p.patient_id,
+   698→    name: p.name,
+   699→    description: p.description,
+   700→    color: p.color,
+   701→    icon: p.icon,
+   702→    isTemplate: p.is_template,
+   703→    isFavorite: p.is_favorite,
+   704→    totalCal: p.total_cal,
+   705→    proteinPct: p.protein_pct,
+   706→    carbPct: p.carb_pct,
+   707→    fatPct: p.fat_pct,
+   708→    proteinG: p.protein_g,
+   709→    carbG: p.carb_g,
+   710→    fatG: p.fat_g,
+   711→    fiberG: p.fiber_g,
+   712→    sodiumMg: p.sodium_mg,
+   713→    goal: p.goal,
+   714→    diagnoses: p.diagnoses,
+   715→  }));
+   716→}
+   717→
+   718→// ---------------------------------------------------------------------
+   719→// RECIPES — Direct Supabase
+   720→// ---------------------------------------------------------------------
+   721→export async function supabaseFetchRecipes(q?: string): Promise<any[]> {
+   722→  const supabase = getSupabase();
+   723→  const { data, error } = await supabase
+   724→    .from("recipes")
+   725→    .select("*, recipe_items(*, foods(*, food_categories(*)))")
+   726→    .is("deleted_at", null)
+   727→    .order("created_at", { ascending: false })
+   728→    .limit(50);
+   729→
+   730→  if (error) {
+   731→    console.error("[frontend] fetchRecipes error:", error);
+   732→    return [];
+   733→  }
+   734→
+   735→  let recipes = (data || []).map((r: any) => ({
+   736→    id: r.id,
+   737→    name: r.name,
+   738→    description: r.description,
+   739→    servings: r.servings,
+   740→    method: r.method,
+   741→    items: (r.recipe_items || []).map((ri: any) => ({
+   742→      id: ri.id,
+   743→      foodId: ri.food_id,
+   744→      amount: ri.amount,
+   745→      food: ri.foods ? {
+   746→        id: ri.foods.id,
+   747→        name: ri.foods.name,
+   748→        energy: ri.foods.energy,
+   749→        category: ri.foods.food_categories ? { slug: ri.foods.food_categories.slug } : null,
+   750→      } : null,
+   751→    })),
+   752→  }));
+   753→
+   754→  if (q) {
+   755→    recipes = recipes.filter((r) => r.name.toLowerCase().includes(q.toLowerCase()));
+   756→  }
+   757→
+   758→  return recipes;
+   759→}
+   760→
+   761→// ---------------------------------------------------------------------
+   762→// SAVED MEAL PLANS — Direct Supabase
+   763→// ---------------------------------------------------------------------
+   764→export async function supabaseFetchSavedMealPlans(patientId?: string): Promise<any[]> {
+   765→  const supabase = getSupabase();
+   766→  let query = supabase
+   767→    .from("saved_meal_plans")
+   768→    .select("*, saved_meal_plan_items(*, foods(*, food_categories(*)))")
+   769→    .order("created_at", { ascending: false })
+   770→    .limit(50);
+   771→
+   772→  if (patientId) {
+   773→    query = query.eq("patient_id", patientId);
+   774→  }
+   775→
+   776→  const { data, error } = await query;
+   777→  if (error) {
+   778→    console.error("[frontend] fetchSavedMealPlans error:", error);
+   779→    return [];
+   780→  }
+   781→
+   782→  return (data || []).map((p: any) => ({
+   783→    id: p.id,
+   784→    patientId: p.patient_id,
+   785→    name: p.name,
+   786→    totalCal: p.total_cal,
+   787→    totalProtein: p.total_protein,
+   788→    totalFat: p.total_fat,
+   789→    totalCarb: p.total_carb,
+   790→    totalFiber: p.total_fiber,
+   791→    totalSodium: p.total_sodium,
+   792→    notes: p.notes,
+   793→    createdAt: p.created_at,
+   794→    items: (p.saved_meal_plan_items || []).map((i: any) => ({
+   795→      id: i.id,
+   796→      slot: i.slot,
+   797→      foodId: i.food_id,
+   798→      foodName: i.food_name,
+   799→      amount: i.amount,
+   800→      cal: i.cal,
+   801→      protein: i.protein,
+   802→      food: i.foods ? {
+   803→        id: i.foods.id,
+   804→        name: i.foods.name,
+   805→        category: i.foods.food_categories ? { slug: i.foods.food_categories.slug } : null,
+   806→      } : null,
+   807→    })),
+   808→  }));
+   809→}
+   810→
+   811→export async function supabaseCreateSavedMealPlan(data: any): Promise<any> {
+   812→  const supabase = getSupabase();
+   813→  const { data: plan, error } = await supabase
+   814→    .from("saved_meal_plans")
+   815→    .insert({
+   816→      patient_id: data.patientId ?? null,
+   817→      name: data.name,
+   818→      total_cal: data.totalCal ?? 0,
+   819→      total_protein: data.totalProtein ?? 0,
+   820→      total_fat: data.totalFat ?? 0,
+   821→      total_carb: data.totalCarb ?? 0,
+   822→      total_fiber: data.totalFiber ?? 0,
+   823→      total_sodium: data.totalSodium ?? 0,
+   824→      notes: data.notes ?? "",
+   825→    })
+   826→    .select()
+   827→    .single();
+   828→
+   829→  if (error) throw new Error(error.message);
+   830→
+   831→  if (data.items && data.items.length > 0) {
+   832→    // Fetch food names
+   833→    const foodIds = [...new Set(data.items.map((i: any) => i.foodId))];
+   834→    const { data: foods } = await supabase.from("foods").select("id, name").in("id", foodIds);
+   835→    const nameMap = new Map((foods || []).map((f: any) => [f.id, f.name]));
+   836→
+   837→    const items = data.items.map((i: any) => ({
+   838→      saved_meal_plan_id: plan.id,
+   839→      slot: (i.slot ?? "LUNCH").toUpperCase(),
+   840→      food_id: i.foodId,
+   841→      food_name: i.foodName ?? nameMap.get(i.foodId) ?? "Unknown",
+   842→      amount: i.amount,
+   843→      cal: i.cal ?? 0,
+   844→      protein: i.protein ?? 0,
+   845→      fat: i.fat ?? 0,
+   846→      carb: i.carb ?? 0,
+   847→      fiber: i.fiber ?? 0,
+   848→      sodium: i.sodium ?? 0,
+   849→    }));
+   850→    const { error: itemsError } = await supabase.from("saved_meal_plan_items").insert(items);
+   851→    if (itemsError) throw new Error(itemsError.message);
+   852→  }
+   853→
+   854→  return plan;
+   855→}
+   856→
+   857→export async function supabaseDeleteSavedMealPlan(id: string): Promise<void> {
+   858→  const supabase = getSupabase();
+   859→  const { error } = await supabase.from("saved_meal_plans").delete().eq("id", id);
+   860→  if (error) throw new Error(error.message);
+   861→}
+   862→
+   863→// ---------------------------------------------------------------------
+   864→// PATIENT CREATE/UPDATE — Direct Supabase
+   865→// ---------------------------------------------------------------------
+   866→export async function supabaseCreatePatient(data: any): Promise<any> {
+   867→  const supabase = getSupabase();
+   868→  const { data: patient, error } = await supabase
+   869→    .from("patients")
+   870→    .insert({
+   871→      mrn: data.mrn,
+   872→      name: data.name,
+   873→      gender: data.gender,
+   874→      birth_date: data.birthDate,
+   875→      phone: data.phone ?? "",
+   876→      address: data.address ?? "",
+   877→      religion: data.religion ?? "ISLAM",
+   878→      blood_type: data.bloodType ?? "UNKNOWN",
+   879→      allergy: data.allergy ?? "",
+   880→      height: data.height ?? null,
+   881→      weight: data.weight ?? null,
+   882→      is_pregnant: data.isPregnant ?? false,
+   883→      pregnancy_trimester: data.pregnancyTrimester ?? 0,
+   884→      is_lactating: data.isLactating ?? false,
+   885→      lactation_month: data.lactationMonth ?? 0,
+   886→      notes: data.notes,
+   887→    })
+   888→    .select()
+   889→    .single();
+   890→
+   891→  if (error) throw new Error(error.message);
+   892→
+   893→  // Create diagnoses
+   894→  if (data.diagnoses && data.diagnoses.length > 0) {
+   895→    const diagnoses = data.diagnoses.map((type: string) => ({
+   896→      patient_id: patient.id,
+   897→      type,
+   898→      active: true,
+   899→    }));
+   900→    await supabase.from("diagnoses").insert(diagnoses);
+   901→  }
+   902→
+   903→  return patient;
+   904→}
+   905→
+   906→export async function supabaseUpdatePatient(id: string, data: any): Promise<any> {
+   907→  const supabase = getSupabase();
+   908→  const { data: patient, error } = await supabase
+   909→    .from("patients")
+   910→    .update({
+   911→      name: data.name,
+   912→      phone: data.phone,
+   913→      address: data.address,
+   914→      height: data.height,
+   915→      weight: data.weight,
+   916→      notes: data.notes,
+   917→    })
+   918→    .eq("id", id)
+   919→    .select()
+   920→    .single();
+   921→
+   922→  if (error) throw new Error(error.message);
+   923→  return patient;
+   924→}
+   925→
+   926→// ---------------------------------------------------------------------
+   927→// RECIPE CREATE — Direct Supabase
+   928→// ---------------------------------------------------------------------
+   929→export async function supabaseCreateRecipe(data: any): Promise<any> {
+   930→  const supabase = getSupabase();
+   931→  const { data: recipe, error } = await supabase
+   932→    .from("recipes")
+   933→    .insert({
+   934→      name: data.name,
+   935→      description: data.description ?? "",
+   936→      servings: data.servings ?? 1,
+   937→      method: data.method ?? "",
+   938→    })
+   939→    .select()
+   940→    .single();
+   941→
+   942→  if (error) throw new Error(error.message);
+   943→
+   944→  if (data.items && data.items.length > 0) {
+   945→    const items = data.items.map((i: any) => ({
+   946→      recipe_id: recipe.id,
+   947→      food_id: i.foodId,
+   948→      amount: i.amount,
+   949→    }));
+   950→    const { error: itemsError } = await supabase.from("recipe_items").insert(items);
+   951→    if (itemsError) throw new Error(itemsError.message);
+   952→  }
+   953→
+   954→  return recipe;
+   955→}
+   956→
+   957→export async function supabaseDeleteRecipe(id: string): Promise<void> {
+   958→  const supabase = getSupabase();
+   959→  const { error } = await supabase
+   960→    .from("recipes")
+   961→    .update({ deleted_at: new Date().toISOString() })
+   962→    .eq("id", id);
+   963→  if (error) throw new Error(error.message);
+   964→}
+   965→

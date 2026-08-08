@@ -1,0 +1,318 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* =====================================================================
+   CareLivia CNMS — Clinical Nutrition Theme
+   Palette: Emerald (primary clinical), Teal (secondary), Amber (warning),
+   Rose (critical), warm neutrals. Material Design 3 inspired.
+   ===================================================================== */
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.99 0.005 145);
+  --foreground: oklch(0.18 0.02 160);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 160);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 160);
+  /* Emerald-600 clinical primary */
+  --primary: oklch(0.55 0.13 160);
+  --primary-foreground: oklch(0.99 0.005 145);
+  --secondary: oklch(0.96 0.012 160);
+  --secondary-foreground: oklch(0.25 0.03 160);
+  --muted: oklch(0.96 0.008 150);
+  --muted-foreground: oklch(0.5 0.02 160);
+  --accent: oklch(0.94 0.03 165);
+  --accent-foreground: oklch(0.3 0.05 165);
+  --destructive: oklch(0.58 0.22 27);
+  --border: oklch(0.9 0.01 160);
+  --input: oklch(0.92 0.01 160);
+  --ring: oklch(0.55 0.13 160);
+  --chart-1: oklch(0.6 0.13 160);  /* emerald */
+  --chart-2: oklch(0.62 0.1 200);  /* teal */
+  --chart-3: oklch(0.7 0.15 80);   /* amber */
+  --chart-4: oklch(0.6 0.2 350);   /* rose */
+  --chart-5: oklch(0.55 0.16 280); /* violet */
+  --sidebar: oklch(0.985 0.006 160);
+  --sidebar-foreground: oklch(0.2 0.02 160);
+  --sidebar-primary: oklch(0.55 0.13 160);
+  --sidebar-primary-foreground: oklch(0.99 0.005 145);
+  --sidebar-accent: oklch(0.94 0.03 165);
+  --sidebar-accent-foreground: oklch(0.3 0.05 165);
+  --sidebar-border: oklch(0.9 0.01 160);
+  --sidebar-ring: oklch(0.55 0.13 160);
+}
+
+.dark {
+  --background: oklch(0.16 0.015 165);
+  --foreground: oklch(0.97 0.005 150);
+  --card: oklch(0.2 0.02 165);
+  --card-foreground: oklch(0.97 0.005 150);
+  --popover: oklch(0.2 0.02 165);
+  --popover-foreground: oklch(0.97 0.005 150);
+  --primary: oklch(0.7 0.14 160);
+  --primary-foreground: oklch(0.16 0.015 165);
+  --secondary: oklch(0.27 0.02 165);
+  --secondary-foreground: oklch(0.97 0.005 150);
+  --muted: oklch(0.25 0.018 165);
+  --muted-foreground: oklch(0.7 0.015 160);
+  --accent: oklch(0.3 0.04 165);
+  --accent-foreground: oklch(0.95 0.01 160);
+  --destructive: oklch(0.7 0.19 22);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.7 0.14 160);
+  --chart-1: oklch(0.65 0.14 160);
+  --chart-2: oklch(0.65 0.11 200);
+  --chart-3: oklch(0.75 0.15 80);
+  --chart-4: oklch(0.65 0.2 350);
+  --chart-5: oklch(0.6 0.16 280);
+  --sidebar: oklch(0.18 0.018 165);
+  --sidebar-foreground: oklch(0.97 0.005 150);
+  --sidebar-primary: oklch(0.7 0.14 160);
+  --sidebar-primary-foreground: oklch(0.16 0.015 165);
+  --sidebar-accent: oklch(0.27 0.03 165);
+  --sidebar-accent-foreground: oklch(0.95 0.01 160);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0.14 160);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Custom scrollbar — modern emerald clinical theme */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 8px;
+    border: 2px solid var(--background);
+    min-height: 40px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--primary), black 15%);
+  }
+  ::-webkit-scrollbar-corner {
+    background: var(--muted);
+  }
+  /* Firefox scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) var(--muted);
+  }
+}
+
+/* Clinical utility classes */
+@layer components {
+  .cl-gradient-primary {
+    background-image: linear-gradient(135deg, var(--primary), var(--chart-2));
+  }
+  .cl-card-grad {
+    background-image: linear-gradient(135deg, oklch(0.99 0.005 145), oklch(0.96 0.02 165));
+  }
+  .cl-glow {
+    box-shadow: 0 0 0 1px var(--border), 0 8px 24px -8px oklch(0.55 0.13 160 / 0.25);
+  }
+  .cl-stat-num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Print styles for clinical reports — produces professional PDF via browser print */
+@media print {
+  /* Hide all non-report UI */
+  .no-print { display: none !important; }
+
+  /* Force white background for print */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Reset layout for print — only show the report */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /*
+   * ROOT CAUSE FIX — the app shell (AppShell in app-shell.tsx) uses
+   * `h-screen` + `overflow-hidden` on the outer flex wrapper and again on
+   * the `<main>` column, with `overflow-y-auto` for scrolling. Those fixed
+   * viewport-height + clipped-overflow ancestors are still in the box tree
+   * during print, so the browser only rasterizes what was visible in the
+   * viewport at the moment `window.print()` fired — i.e. page 1. Every
+   * ancestor of `.cl-report` must be forced back to natural, unclipped
+   * height for the full document to flow across pages.
+   */
+  html:has(.cl-report),
+  body:has(.cl-report),
+  #__next:has(.cl-report),
+  div:has(> .cl-report),
+  .cl-report,
+  .cl-report * {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Belt-and-suspenders for browsers without :has() support — target the
+     known app-shell structural classes directly instead of relying on the
+     relational selector above. */
+  .flex.h-screen,
+  [class*="h-screen"],
+  [class*="overflow-hidden"],
+  [class*="overflow-y-auto"] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Hide chrome (sidebar/topbar/site-footer) — scoped to the actual layout
+     landmarks only. The previous [class*="header"]/[class*="footer"]
+     wildcard selectors also matched unrelated report content (anything
+     whose class merely contained the substring "header" or "footer") and
+     could silently drop parts of the printed report, which is the opposite
+     of what we want. */
+  body > div > aside,
+  [data-slot="sidebar"],
+  body > div > div > header,
+  body > div > div > footer {
+    display: none !important;
+  }
+
+  /* Overlays that must never appear in printed/exported output */
+  [data-sonner-toaster],
+  [data-sonner-toast],
+  [role="tooltip"],
+  [role="dialog"],
+  [role="alertdialog"],
+  [data-radix-popper-content-wrapper],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Show only the report — make it full page */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Report container — A4 optimized */
+  .cl-report {
+    max-width: none !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    color: black !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Print page setup */
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+  }
+
+  /* Ensure colors print correctly */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent page breaks inside sections/cards, but allow the overall
+     report to paginate freely across as many pages as it needs. */
+  .cl-report > div > div,
+  .cl-report section,
+  .cl-report [class*="section"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Gradient backgrounds — convert to solid for print reliability */
+  .cl-gradient-primary {
+    background: #10b981 !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Tables — repeat header row on every page, avoid splitting a row */
+  table { page-break-inside: auto; }
+  tr, td, th {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+}
+

@@ -1,0 +1,982 @@
+     1→"use client";
+     2→
+     3→import * as React from "react";
+     4→import {
+     5→  Utensils,
+     6→  Sparkles,
+     7→  User,
+     8→  Clock,
+     9→  CheckCircle2,
+    10→  Target,
+    11→  TrendingUp,
+    12→  Brain,
+    13→  AlertCircle,
+    14→  Plus,
+    15→  Trash2,
+    16→  Bookmark,
+    17→  Stethoscope,
+    18→  Activity,
+    19→  Save,
+    20→  FolderOpen,
+    21→  Apple,
+    22→  RotateCw,
+    23→  ChevronDown,
+    24→  ChevronRight,
+    25→  Info,
+    26→  X,
+    27→  RefreshCw,
+    28→} from "lucide-react";
+    29→import {
+    30→  Card,
+    31→  CardContent,
+    32→  CardHeader,
+    33→  CardTitle,
+    34→} from "@/components/ui/card";
+    35→import { Button } from "@/components/ui/button";
+    36→import { Input } from "@/components/ui/input";
+    37→import { Label } from "@/components/ui/label";
+    38→import { Badge } from "@/components/ui/badge";
+    39→import { Progress } from "@/components/ui/progress";
+    40→import { Skeleton } from "@/components/ui/skeleton";
+    41→import {
+    42→  Select,
+    43→  SelectContent,
+    44→  SelectItem,
+    45→  SelectTrigger,
+    46→  SelectValue,
+    47→} from "@/components/ui/select";
+    48→import {
+    49→  Dialog,
+    50→  DialogContent,
+    51→  DialogHeader,
+    52→  DialogTitle,
+    53→  DialogFooter,
+    54→  DialogDescription,
+    55→} from "@/components/ui/dialog";
+    56→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+    57→import {
+    58→  Tooltip,
+    59→  TooltipContent,
+    60→  TooltipProvider,
+    61→  TooltipTrigger,
+    62→} from "@/components/ui/tooltip";
+    63→import {
+    64→  Collapsible,
+    65→  CollapsibleContent,
+    66→  CollapsibleTrigger,
+    67→} from "@/components/ui/collapsible";
+    68→import { toast } from "sonner";
+    69→import {
+    70→  PageHeader,
+    71→  SectionCard,
+    72→  StatCard,
+    73→  EmptyState,
+    74→} from "@/components/carelivia/ui-helpers";
+    75→import { IsiPiringkuPlate } from "@/components/carelivia/isi-piringku-plate";
+    76→import {
+    77→  usePatients,
+    78→  useMealPlans,
+    79→  useGenerateMealPlan,
+    80→  usePreviewIsiPiringku,
+    81→  usePresets,
+    82→  useCreateSavedMealPlan,
+    83→} from "@/hooks/use-carelivia";
+    84→import { useCareLiviaStore } from "@/store/carelivia";
+    85→import { DIAGNOSIS_ADJUSTMENTS } from "@/lib/clinical/constants";
+    86→import type { DiagnosisType, MealSlot } from "@prisma/client";
+    87→import type { PlateGroup } from "@/lib/clinical/isi-piringku";
+    88→import {
+    89→  COMPLIANCE_TIER_LABEL,
+    90→  COMPLIANCE_TIER_COLOR,
+    91→  COMPLIANCE_TIER_ICON,
+    92→  PLATE_GROUP_LABEL,
+    93→  PLATE_GROUP_ICON,
+    94→} from "@/lib/clinical/isi-piringku";
+    95→
+    96→const SLOT_LABELS: Record<MealSlot, string> = {
+    97→  BREAKFAST: "Sarapan",
+    98→  MORNING_SNACK: "Snack Pagi",
+    99→  LUNCH: "Makan Siang",
+   100→  AFTERNOON_SNACK: "Snack Sore",
+   101→  DINNER: "Makan Malam",
+   102→  EVENING_SNACK: "Snack Malam",
+   103→};
+   104→
+   105→const SLOT_DISTRIBUTION_PCT: Record<MealSlot, string> = {
+   106→  BREAKFAST: "20-25%",
+   107→  MORNING_SNACK: "5-10%",
+   108→  LUNCH: "30-35%",
+   109→  AFTERNOON_SNACK: "5-10%",
+   110→  DINNER: "25-30%",
+   111→  EVENING_SNACK: "0-5%",
+   112→};
+   113→
+   114→const SLOT_COLORS: Record<MealSlot, string> = {
+   115→  BREAKFAST: "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-amber-500/20",
+   116→  MORNING_SNACK: "bg-orange-500/10 text-orange-700 dark:text-orange-400 ring-orange-500/20",
+   117→  LUNCH: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-emerald-500/20",
+   118→  AFTERNOON_SNACK: "bg-teal-500/10 text-teal-700 dark:text-teal-400 ring-teal-500/20",
+   119→  DINNER: "bg-violet-500/10 text-violet-700 dark:text-violet-400 ring-violet-500/20",
+   120→  EVENING_SNACK: "bg-slate-500/10 text-slate-700 dark:text-slate-400 ring-slate-500/20",
+   121→};
+   122→
+   123→const MAIN_SLOTS: MealSlot[] = ["BREAKFAST", "LUNCH", "DINNER"];
+   124→
+   125→export function MealPlanView() {
+   126→  const { data: patients } = usePatients();
+   127→  const { activePatientId } = useCareLiviaStore();
+   128→  const [selectedPatientId, setSelectedPatientId] = React.useState<string>(
+   129→    activePatientId || "",
+   130→  );
+   131→  const [activePresetId, setActivePresetId] = React.useState<string | null>(null);
+   132→  const [activePresetName, setActivePresetName] = React.useState<string | null>(null);
+   133→  const [previewData, setPreviewData] = React.useState<any>(null);
+   134→  const [showSaveDialog, setShowSaveDialog] = React.useState(false);
+   135→  const [saveName, setSaveName] = React.useState("");
+   136→
+   137→  React.useEffect(() => {
+   138→    if (activePatientId && !selectedPatientId) {
+   139→      setSelectedPatientId(activePatientId);
+   140→    }
+   141→  }, [activePatientId, selectedPatientId]);
+   142→
+   143→  const { data: plans, isLoading } = useMealPlans(selectedPatientId || undefined);
+   144→  const { data: presets } = usePresets(selectedPatientId || undefined);
+   145→  const generateMut = useGenerateMealPlan();
+   146→  const previewMut = usePreviewIsiPiringku();
+   147→  const saveMut = useCreateSavedMealPlan();
+   148→
+   149→  const latestPlan = plans?.[0];
+   150→  const selectedPatient = patients?.find((p) => p.id === selectedPatientId);
+   151→  const patientPresets = (presets || []).filter((p: any) => !p.isTemplate);
+   152→  const templatePresets = (presets || []).filter((p: any) => p.isTemplate);
+   153→
+   154→  // Sync active preset from latest meal plan
+   155→  React.useEffect(() => {
+   156→    if (latestPlan?.presetId && !activePresetId) {
+   157→      setActivePresetId(latestPlan.presetId);
+   158→      setActivePresetName(latestPlan.preset?.name || null);
+   159→    }
+   160→  }, [latestPlan, activePresetId]);
+   161→
+   162→  const handleGenerate = async () => {
+   163→    if (!selectedPatientId) {
+   164→      toast.error("Pilih pasien terlebih dahulu");
+   165→      return;
+   166→    }
+   167→    try {
+   168→      // Use preview endpoint (no persistence) for live view
+   169→      const result = await previewMut.mutateAsync({
+   170→        patientId: selectedPatientId,
+   171→        presetId: activePresetId || undefined,
+   172→      });
+   173→      setPreviewData(result);
+   174→      toast.success(
+   175→        activePresetName
+   176→          ? `Meal plan Isi Piringku dibuat dengan preset "${activePresetName}"`
+   177→          : "Meal plan Isi Piringku berhasil dibuat",
+   178→      );
+   179→    } catch (e: any) {
+   180→      toast.error(e.message || "Gagal membuat meal plan");
+   181→    }
+   182→  };
+   183→
+   184→  const handlePersist = async () => {
+   185→    if (!selectedPatientId) return;
+   186→    try {
+   187→      await generateMut.mutateAsync({
+   188→        patientId: selectedPatientId,
+   189→        presetId: activePresetId || undefined,
+   190→      });
+   191→      toast.success("Meal plan disimpan ke database");
+   192→    } catch (e: any) {
+   193→      toast.error(e.message || "Gagal menyimpan meal plan");
+   194→    }
+   195→  };
+   196→
+   197→  const handleSaveAsTemplate = async () => {
+   198→    if (!selectedPatientId || !previewData) return;
+   199→    try {
+   200→      await saveMut.mutateAsync({
+   201→        patientId: selectedPatientId,
+   202→        name: saveName || `Meal Plan ${new Date().toLocaleDateString("id-ID")}`,
+   203→        date: new Date().toISOString(),
+   204→        totalCal: previewData.plan.totals.cal,
+   205→        totalProtein: previewData.plan.totals.protein,
+   206→        totalFat: previewData.plan.totals.fat,
+   207→        totalCarb: previewData.plan.totals.carb,
+   208→        totalFiber: previewData.plan.totals.fiber,
+   209→        totalSodium: previewData.plan.totals.sodium,
+   210→        compliance: previewData.plan.overallCompliance,
+   211→        notes: `Compliance: ${previewData.plan.overallTierLabel}`,
+   212→        items: previewData.plan.items.map((i: any) => ({
+   213→          slot: i.slot,
+   214→          foodId: i.foodId,
+   215→          amount: i.amount,
+   216→          cal: i.cal,
+   217→          protein: i.protein,
+   218→          fat: i.fat,
+   219→          carb: i.carb,
+   220→          fiber: i.fiber,
+   221→          sodium: i.sodium,
+   222→        })),
+   223→      });
+   224→      toast.success(`Meal plan "${saveName}" disimpan ke library`);
+   225→      setShowSaveDialog(false);
+   226→      setSaveName("");
+   227→    } catch (e: any) {
+   228→      toast.error(e.message || "Gagal menyimpan meal plan");
+   229→    }
+   230→  };
+   231→
+   232→  const handleSelectPreset = (preset: any) => {
+   233→    setActivePresetId(preset.id);
+   234→    setActivePresetName(preset.name);
+   235→    toast.success(`Preset "${preset.name}" dipilih — klik Generate untuk membuat Meal Plan baru`);
+   236→  };
+   237→
+   238→  const plan = previewData?.plan;
+   239→  const calorieResult = previewData?.calorieResult;
+   240→  const aiReasoning = previewData?.aiReasoning;
+   241→  const patientInfo = previewData?.patient;
+   242→  const targets = previewData?.targets;
+   243→
+   244→  return (
+   245→    <div className="space-y-6">
+   246→      <PageHeader
+   247→        title="AI Meal Plan — Isi Piringku"
+   248→        subtitle="Pedoman Gizi Seimbang Kemenkes RI: 4 kelompok makanan di setiap makan utama"
+   249→        icon={Utensils}
+   250→        actions={
+   251→          <>
+   252→            <Button
+   253→              variant="outline"
+   254→              size="sm"
+   255→              onClick={() => {
+   256→                setPreviewData(null);
+   257→                setActivePresetId(null);
+   258→                setActivePresetName(null);
+   259→              }}
+   260→            >
+   261→              <X className="mr-1.5 h-4 w-4" /> Reset
+   262→            </Button>
+   263→            <Button
+   264→              onClick={handleGenerate}
+   265→              disabled={previewMut.isPending || !selectedPatientId}
+   266→              size="sm"
+   267→            >
+   268→              <Sparkles className="mr-1.5 h-4 w-4" />
+   269→              {previewMut.isPending ? "Menyusun…" : "Generate Isi Piringku"}
+   270→            </Button>
+   271→          </>
+   272→        }
+   273→      />
+   274→
+   275→      {/* Patient + Preset selector */}
+   276→      <Card className="border-border/60">
+   277→        <CardContent className="p-5">
+   278→          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   279→            <div>
+   280→              <Label className="text-xs font-medium text-muted-foreground">
+   281→                <User className="mr-1 inline h-3.5 w-3.5" /> Pasien
+   282→              </Label>
+   283→              <Select
+   284→                value={selectedPatientId}
+   285→                onValueChange={setSelectedPatientId}
+   286→              >
+   287→                <SelectTrigger className="mt-1.5">
+   288→                  <SelectValue placeholder="Pilih pasien" />
+   289→                </SelectTrigger>
+   290→                <SelectContent>
+   291→                  {(patients || []).map((p: any) => (
+   292→                    <SelectItem key={p.id} value={p.id}>
+   293→                      {p.name} — {p.mrn}
+   294→                    </SelectItem>
+   295→                  ))}
+   296→                </SelectContent>
+   297→              </Select>
+   298→            </div>
+   299→
+   300→            <div>
+   301→              <Label className="text-xs font-medium text-muted-foreground">
+   302→                <Target className="mr-1 inline h-3.5 w-3.5" /> Preset Aktif (opsional)
+   303→              </Label>
+   304→              <Select
+   305→                value={activePresetId || "__none__"}
+   306→                onValueChange={(v) => {
+   307→                  if (v === "__none__") {
+   308→                    setActivePresetId(null);
+   309→                    setActivePresetName(null);
+   310→                  } else {
+   311→                    const p = (presets || []).find((x: any) => x.id === v);
+   312→                    if (p) handleSelectPreset(p);
+   313→                  }
+   314→                }}
+   315→              >
+   316→                <SelectTrigger className="mt-1.5">
+   317→                  <SelectValue placeholder="Tanpa preset (pakai target CareLivia)" />
+   318→                </SelectTrigger>
+   319→                <SelectContent>
+   320→                  <SelectItem value="__none__">— Tanpa preset —</SelectItem>
+   321→                  {patientPresets.length > 0 && (
+   322→                    <>
+   323→                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+   324→                        Preset Pasien
+   325→                      </div>
+   326→                      {patientPresets.map((p: any) => (
+   327→                        <SelectItem key={p.id} value={p.id}>
+   328→                          {p.name} ({p.totalCal} kcal)
+   329→                        </SelectItem>
+   330→                      ))}
+   331→                    </>
+   332→                  )}
+   333→                  {templatePresets.length > 0 && (
+   334→                    <>
+   335→                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+   336→                        Template
+   337→                      </div>
+   338→                      {templatePresets.map((p: any) => (
+   339→                        <SelectItem key={p.id} value={p.id}>
+   340→                          {p.name} ({p.totalCal} kcal)
+   341→                        </SelectItem>
+   342→                      ))}
+   343→                    </>
+   344→                  )}
+   345→                </SelectContent>
+   346→              </Select>
+   347→            </div>
+   348→
+   349→            <div>
+   350→              <Label className="text-xs font-medium text-muted-foreground">
+   351→                <Activity className="mr-1 inline h-3.5 w-3.5" /> Diagnosis Utama
+   352→              </Label>
+   353→              <div className="mt-1.5 flex flex-wrap gap-1">
+   354→                {selectedPatient?.diagnoses?.length ? (
+   355→                  selectedPatient.diagnoses.map((raw: any, idx: number) => {
+   356→                    const d: string = typeof raw === "string" ? raw : (raw?.type ?? "");
+   357→                    if (!d) return null;
+   358→                    return (
+   359→                      <Badge key={`${d}-${idx}`} variant="secondary" className="text-xs">
+   360→                        {DIAGNOSIS_ADJUSTMENTS[d as DiagnosisType]?.label || d}
+   361→                      </Badge>
+   362→                    );
+   363→                  })
+   364→                ) : (
+   365→                  <Badge variant="outline" className="text-xs">Umum</Badge>
+   366→                )}
+   367→              </div>
+   368→            </div>
+   369→          </div>
+   370→
+   371→          {activePresetName && (
+   372→            <Alert className="mt-4 border-violet-500/30 bg-violet-500/5">
+   373→              <Target className="h-4 w-4 text-violet-600" />
+   374→              <AlertTitle className="text-sm">Preset aktif: {activePresetName}</AlertTitle>
+   375→              <AlertDescription className="text-xs">
+   376→                Target akan di-override dengan nilai preset. Klik Generate untuk menyusun ulang.
+   377→              </AlertDescription>
+   378→            </Alert>
+   379→          )}
+   380→        </CardContent>
+   381→      </Card>
+   382→
+   383→      {/* Loading state */}
+   384→      {previewMut.isPending && !plan && (
+   385→        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   386→          {Array.from({ length: 3 }).map((_, i) => (
+   387→            <Skeleton key={i} className="h-72 w-full rounded-xl" />
+   388→          ))}
+   389→        </div>
+   390→      )}
+   391→
+   392→      {/* Empty state */}
+   393→      {!plan && !previewMut.isPending && (
+   394→        <EmptyState
+   395→          icon={Utensils}
+   396→          title="Belum ada Meal Plan"
+   397→          description="Pilih pasien lalu klik Generate untuk menyusun rencana makan sesuai Pedoman Isi Piringku Kemenkes RI. Setiap makan utama akan berisi 4 kelompok: makanan pokok, lauk pauk, sayuran, dan buah."
+   398→          action={
+   399→            <Button onClick={handleGenerate} disabled={!selectedPatientId}>
+   400→              <Sparkles className="mr-1.5 h-4 w-4" /> Generate Sekarang
+   401→            </Button>
+   402→          }
+   403→        />
+   404→      )}
+   405→
+   406→      {/* MAIN CONTENT — Isi Piringku plan */}
+   407→      {plan && calorieResult && (
+   408→        <>
+   409→          {/* Top summary stats */}
+   410→          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   411→            <StatCard
+   412→              label="Target Energi"
+   413→              value={calorieResult.targetCalorie.toLocaleString("id-ID")}
+   414→              unit="kcal"
+   415→              icon={Target}
+   416→              color="primary"
+   417→              sublabel={`BMI ${calorieResult.bmi} (${calorieResult.bmiLabel})`}
+   418→            />
+   419→            <StatCard
+   420→              label="Energi Aktual"
+   421→              value={plan.totals.cal.toLocaleString("id-ID")}
+   422→              unit="kcal"
+   423→              icon={TrendingUp}
+   424→              color="emerald"
+   425→              sublabel={`${Math.round((plan.totals.cal / calorieResult.targetCalorie) * 100)}% dari target`}
+   426→            />
+   427→            <StatCard
+   428→              label="Compliance Isi Piringku"
+   429→              value={plan.overallCompliance}
+   430→              unit="%"
+   431→              icon={CheckCircle2}
+   432→              color={plan.overallCompliance >= 90 ? "emerald" : plan.overallCompliance >= 70 ? "amber" : "rose"}
+   433→              sublabel={`${COMPLIANCE_TIER_ICON[plan.overallTier]} ${plan.overallTierLabel}`}
+   434→            />
+   435→            <StatCard
+   436→              label="Distribusi Makro"
+   437→              value={`P${Math.round((plan.totals.protein * 4 / plan.totals.cal) * 100)}/L${Math.round((plan.totals.fat * 9 / plan.totals.cal) * 100)}/K${Math.round((plan.totals.carb * 4 / plan.totals.cal) * 100)}`}
+   438→              icon={Activity}
+   439→              color="violet"
+   440→              sublabel={`Protein ${plan.totals.protein}g · Lemak ${plan.totals.fat}g · Karbo ${plan.totals.carb}g`}
+   441→            />
+   442→          </div>
+   443→
+   444→          {/* Action bar */}
+   445→          <div className="flex flex-wrap items-center gap-2">
+   446→            <Button onClick={handleGenerate} variant="outline" size="sm" disabled={previewMut.isPending}>
+   447→              <RefreshCw className="mr-1.5 h-4 w-4" />
+   448→              {previewMut.isPending ? "Menyusun ulang…" : "Generate Ulang"}
+   449→            </Button>
+   450→            <Button onClick={handlePersist} variant="default" size="sm" disabled={generateMut.isPending}>
+   451→              <Save className="mr-1.5 h-4 w-4" />
+   452→              {generateMut.isPending ? "Menyimpan…" : "Simpan ke Database"}
+   453→            </Button>
+   454→            <Button onClick={() => setShowSaveDialog(true)} variant="outline" size="sm">
+   455→              <Bookmark className="mr-1.5 h-4 w-4" /> Simpan ke Library
+   456→            </Button>
+   457→            {patientInfo && (
+   458→              <Badge variant="outline" className="ml-auto text-xs">
+   459→                <User className="mr-1 h-3 w-3" />
+   460→                {patientInfo.name} · {patientInfo.mrn}
+   461→              </Badge>
+   462→            )}
+   463→          </div>
+   464→
+   465→          {/* ROTATION WARNINGS */}
+   466→          {plan.rotationWarnings.length > 0 && (
+   467→            <Alert className="border-amber-500/30 bg-amber-500/5">
+   468→              <RotateCw className="h-4 w-4 text-amber-600" />
+   469→              <AlertTitle className="text-sm">Peringatan Variasi Menu (Rotasi 14 Hari)</AlertTitle>
+   470→              <AlertDescription className="text-xs">
+   471→                <ul className="list-disc pl-4 space-y-0.5">
+   472→                  {plan.rotationWarnings.map((w: string, i: number) => (
+   473→                    <li key={i}>{w}</li>
+   474→                  ))}
+   475→                </ul>
+   476→              </AlertDescription>
+   477→            </Alert>
+   478→          )}
+   479→
+   480→          {/* PLATE VISUALIZATION — 3 main meals */}
+   481→          <SectionCard
+   482→            title="Visualisasi Isi Piringku"
+   483→            description="Setiap makan utama mengikuti proporsi: 2/3 makanan pokok + 1/3 lauk pauk (setengah piring pertama); 2/3 sayuran + 1/3 buah (setengah piring kedua)"
+   484→          >
+   485→            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+   486→              {plan.slotSummaries
+   487→                .filter((s: any) => MAIN_SLOTS.includes(s.slot))
+   488→                .map((s: any) => (
+   489→                  <PlateMealCard key={s.slot} summary={s} />
+   490→                ))}
+   491→            </div>
+   492→          </SectionCard>
+   493→
+   494→          {/* DETAILED MEAL ITEMS BY SLOT */}
+   495→          <SectionCard
+   496→            title="Daftar Menu Lengkap"
+   497→            description="Klik item untuk melihat alternatif pengganti setara nutrisi"
+   498→          >
+   499→            <div className="space-y-3">
+   500→              {plan.slotSummaries.map((s: any) => (
+   501→                <SlotItemsCard key={s.slot} summary={s} />
+   502→              ))}
+   503→            </div>
+   504→          </SectionCard>
+   505→
+   506→          {/* NUTRITION VALIDATION TABLE */}
+   507→          <SectionCard
+   508→            title="Validasi Kecukupan Gizi"
+   509→            description="Target terpenuhi jika 95-105% dari kebutuhan harian (Kemenkes RI)"
+   510→          >
+   511→            <NutritionValidationTable validation={plan.validation} />
+   512→          </SectionCard>
+   513→
+   514→          {/* AI REASONING */}
+   515→          {aiReasoning && (
+   516→            <SectionCard
+   517→              title="Evaluasi AI CareLivia"
+   518→              description="Analisis klinis berbasis Pedoman Isi Piringku & diagnosis pasien"
+   519→            >
+   520→              <div className="rounded-lg border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-primary/5 p-4">
+   521→                <div className="mb-2 flex items-center gap-2">
+   522→                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-500/10">
+   523→                    <Brain className="h-3.5 w-3.5 text-violet-600" />
+   524→                  </div>
+   525→                  <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+   526→                    CareLivia AI Nutritionist
+   527→                  </span>
+   528→                </div>
+   529→                <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+   530→                  {aiReasoning}
+   531→                </p>
+   532→              </div>
+   533→            </SectionCard>
+   534→          )}
+   535→
+   536→          {/* GROUP COVERAGE SUMMARY */}
+   537→          <SectionCard
+   538→            title="Cakupan Kelompok Makanan Hari Ini"
+   539→            description="Jumlah item per kelompok — ideal: 3+ makanan pokok, 3+ lauk, 3+ sayur, 3+ buah"
+   540→          >
+   541→            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+   542→              <GroupCoverageCard
+   543→                group="STAPLE"
+   544→                count={plan.groupCoverage.staple}
+   545→                target={3}
+   546→              />
+   547→              <GroupCoverageCard
+   548→                group="PROTEIN"
+   549→                count={plan.groupCoverage.protein}
+   550→                target={3}
+   551→              />
+   552→              <GroupCoverageCard
+   553→                group="VEGETABLE"
+   554→                count={plan.groupCoverage.vegetable}
+   555→                target={3}
+   556→              />
+   557→              <GroupCoverageCard
+   558→                group="FRUIT"
+   559→                count={plan.groupCoverage.fruit}
+   560→                target={3}
+   561→              />
+   562→            </div>
+   563→          </SectionCard>
+   564→
+   565→          {/* CLINICAL GUIDELINES REFERENCE */}
+   566→          <SectionCard
+   567→            title="Panduan Klinis & Distribusi Energi"
+   568→            description="Acuan: Permenkes RI No.41/2014, Pedoman Gizi Seimbang 2023, PERKENI, ESPEN, KDIGO"
+   569→          >
+   570→            <div className="grid gap-4 lg:grid-cols-2">
+   571→              <div>
+   572→                <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+   573→                  Distribusi Energi per Waktu Makan
+   574→                </h4>
+   575→                <div className="space-y-1.5">
+   576→                  {(Object.keys(SLOT_LABELS) as MealSlot[]).map((slot) => (
+   577→                    <div
+   578→                      key={slot}
+   579→                      className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-1.5 text-xs"
+   580→                    >
+   581→                      <span className="font-medium">{SLOT_LABELS[slot]}</span>
+   582→                      <Badge variant="outline" className="text-[10px]">
+   583→                        {SLOT_DISTRIBUTION_PCT[slot]}
+   584→                      </Badge>
+   585→                    </div>
+   586→                  ))}
+   587→                </div>
+   588→              </div>
+   589→              <div>
+   590→                <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+   591→                  Modifikasi Diagnosis
+   592→                </h4>
+   593→                <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
+   594→                  <p className="font-semibold text-foreground">
+   595→                    {calorieResult.primaryDiagnosis?.label || "Umum"}
+   596→                  </p>
+   597→                  <p className="mt-1 text-muted-foreground">
+   598→                    {calorieResult.primaryDiagnosis?.notes}
+   599→                  </p>
+   600→                  {calorieResult.warnings.length > 0 && (
+   601→                    <ul className="mt-2 list-disc space-y-0.5 pl-4 text-amber-700 dark:text-amber-400">
+   602→                      {calorieResult.warnings.map((w: string, i: number) => (
+   603→                        <li key={i}>{w}</li>
+   604→                      ))}
+   605→                    </ul>
+   606→                  )}
+   607→                </div>
+   608→              </div>
+   609→            </div>
+   610→          </SectionCard>
+   611→        </>
+   612→      )}
+   613→
+   614→      {/* SAVE TO LIBRARY DIALOG */}
+   615→      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+   616→        <DialogContent>
+   617→          <DialogHeader>
+   618→            <DialogTitle>Simpan ke Library Meal Plan</DialogTitle>
+   619→            <DialogDescription>
+   620→              Beri nama untuk meal plan ini. Anda dapat memuatnya kembali nanti untuk pasien yang sama.
+   621→            </DialogDescription>
+   622→          </DialogHeader>
+   623→          <div className="space-y-3 py-2">
+   624→            <div>
+   625→              <Label htmlFor="save-name">Nama Meal Plan</Label>
+   626→              <Input
+   627→                id="save-name"
+   628→                placeholder="cth: Menu DM 1500 kcal Hari 1"
+   629→                value={saveName}
+   630→                onChange={(e) => setSaveName(e.target.value)}
+   631→                className="mt-1.5"
+   632→              />
+   633→            </div>
+   634→            {plan && (
+   635→              <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+   636→                <div className="grid grid-cols-2 gap-2">
+   637→                  <span>Total: <strong className="text-foreground">{plan.totals.cal} kcal</strong></span>
+   638→                  <span>Protein: <strong className="text-foreground">{plan.totals.protein}g</strong></span>
+   639→                  <span>Lemak: <strong className="text-foreground">{plan.totals.fat}g</strong></span>
+   640→                  <span>Karbo: <strong className="text-foreground">{plan.totals.carb}g</strong></span>
+   641→                  <span>Serat: <strong className="text-foreground">{plan.totals.fiber}g</strong></span>
+   642→                  <span>Compliance: <strong className="text-foreground">{plan.overallCompliance}%</strong></span>
+   643→                </div>
+   644→              </div>
+   645→            )}
+   646→          </div>
+   647→          <DialogFooter>
+   648→            <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+   649→              Batal
+   650→            </Button>
+   651→            <Button
+   652→              onClick={handleSaveAsTemplate}
+   653→              disabled={saveMut.isPending || !saveName.trim()}
+   654→            >
+   655→              {saveMut.isPending ? "Menyimpan…" : "Simpan"}
+   656→            </Button>
+   657→          </DialogFooter>
+   658→        </DialogContent>
+   659→      </Dialog>
+   660→    </div>
+   661→  );
+   662→}
+   663→
+   664→// ---------------------------------------------------------------------
+   665→// PlateMealCard — visual plate + compliance for one main meal
+   666→// ---------------------------------------------------------------------
+   667→function PlateMealCard({ summary }: { summary: any }) {
+   668→  const items = summary.items || [];
+   669→  const calPct = summary.slotTargetCal > 0 ? Math.round((summary.slotActualCal / summary.slotTargetCal) * 100) : 0;
+   670→  const tierColor = COMPLIANCE_TIER_COLOR[summary.compliance.tier as keyof typeof COMPLIANCE_TIER_COLOR];
+   671→
+   672→  return (
+   673→    <Card className="overflow-hidden border-border/60">
+   674→      <CardHeader className="pb-2">
+   675→        <div className="flex items-center justify-between">
+   676→          <div>
+   677→            <CardTitle className="flex items-center gap-2 text-base">
+   678→              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${SLOT_COLORS[summary.slot as MealSlot]}`}>
+   679→                {SLOT_LABELS[summary.slot as MealSlot]}
+   680→              </span>
+   681→            </CardTitle>
+   682→            <p className="mt-1 text-xs text-muted-foreground">
+   683→              Target {summary.slotTargetCal} kcal · Aktual {summary.slotActualCal} kcal ({calPct}%)
+   684→            </p>
+   685→          </div>
+   686→          <div className="text-right">
+   687→            <div className="text-2xl font-bold" style={{ color: tierColor }}>
+   688→              {summary.compliance.score}%
+   689→            </div>
+   690→            <div className="text-[10px] font-medium" style={{ color: tierColor }}>
+   691→              {COMPLIANCE_TIER_ICON[summary.compliance.tier as keyof typeof COMPLIANCE_TIER_ICON]} {COMPLIANCE_TIER_LABEL[summary.compliance.tier as keyof typeof COMPLIANCE_TIER_LABEL]}
+   692→            </div>
+   693→          </div>
+   694→        </div>
+   695→      </CardHeader>
+   696→      <CardContent className="flex flex-col items-center pt-2">
+   697→        <IsiPiringkuPlate
+   698→          items={items.map((i: any) => ({
+   699→            group: i.group as PlateGroup,
+   700→            foodName: i.foodName,
+   701→            grams: i.amount,
+   702→            cal: i.cal,
+   703→          }))}
+   704→          size={240}
+   705→          showLegend={false}
+   706→        />
+   707→        {summary.compliance.recommendations.length > 0 && (
+   708→          <div className="mt-3 w-full rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+   709→            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+   710→              Saran Perbaikan
+   711→            </p>
+   712→            <ul className="space-y-0.5 text-[11px] text-amber-800 dark:text-amber-300">
+   713→              {summary.compliance.recommendations.map((r: string, i: number) => (
+   714→                <li key={i}>• {r}</li>
+   715→              ))}
+   716→            </ul>
+   717→          </div>
+   718→        )}
+   719→      </CardContent>
+   720→    </Card>
+   721→  );
+   722→}
+   723→
+   724→// ---------------------------------------------------------------------
+   725→// SlotItemsCard — detailed item list per slot, with alternatives
+   726→// ---------------------------------------------------------------------
+   727→function SlotItemsCard({ summary }: { summary: any }) {
+   728→  const [open, setOpen] = React.useState(true);
+   729→  const items = summary.items || [];
+   730→  const isMain = MAIN_SLOTS.includes(summary.slot as MealSlot);
+   731→
+   732→  return (
+   733→    <Collapsible open={open} onOpenChange={setOpen}>
+   734→      <div className="rounded-lg border border-border/60">
+   735→        <CollapsibleTrigger asChild>
+   736→          <button className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-muted/30">
+   737→            <div className="flex items-center gap-2">
+   738→              {open ? (
+   739→                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+   740→              ) : (
+   741→                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+   742→              )}
+   743→              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${SLOT_COLORS[summary.slot as MealSlot]}`}>
+   744→                {SLOT_LABELS[summary.slot as MealSlot]}
+   745→              </span>
+   746→              <Badge variant="outline" className="text-[10px]">
+   747→                {SLOT_DISTRIBUTION_PCT[summary.slot as MealSlot]}
+   748→              </Badge>
+   749→              {isMain && (
+   750→                <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-700">
+   751→                  Isi Piringku
+   752→                </Badge>
+   753→              )}
+   754→            </div>
+   755→            <div className="flex items-center gap-3 text-xs">
+   756→              <span className="text-muted-foreground">
+   757→                {items.length} item · {summary.slotActualCal} kcal
+   758→              </span>
+   759→              {isMain && (
+   760→                <span
+   761→                  className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
+   762→                  style={{ background: COMPLIANCE_TIER_COLOR[summary.compliance.tier as keyof typeof COMPLIANCE_TIER_COLOR] }}
+   763→                >
+   764→                  {summary.compliance.score}%
+   765→                </span>
+   766→              )}
+   767→            </div>
+   768→          </button>
+   769→        </CollapsibleTrigger>
+   770→        <CollapsibleContent>
+   771→          <div className="divide-y divide-border/40 border-t border-border/40">
+   772→            {items.length === 0 ? (
+   773→              <div className="px-4 py-3 text-xs text-muted-foreground">
+   774→                Tidak ada item — slot mungkin tidak dapat dipenuhi karena keterbatasan database makanan.
+   775→              </div>
+   776→            ) : (
+   777→              items.map((item: any, idx: number) => (
+   778→                <MealItemRow key={idx} item={item} />
+   779→              ))
+   780→            )}
+   781→          </div>
+   782→        </CollapsibleContent>
+   783→      </div>
+   784→    </Collapsible>
+   785→  );
+   786→}
+   787→
+   788→// ---------------------------------------------------------------------
+   789→// MealItemRow — single item with expandable alternatives
+   790→// ---------------------------------------------------------------------
+   791→function MealItemRow({ item }: { item: any }) {
+   792→  const [showAlts, setShowAlts] = React.useState(false);
+   793→  const alts = item.alternatives || [];
+   794→
+   795→  return (
+   796→    <div className="px-4 py-2.5">
+   797→      <div className="flex items-start justify-between gap-3">
+   798→        <div className="flex min-w-0 flex-1 items-start gap-3">
+   799→          <div
+   800→            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
+   801→            style={{ background: `${item.groupColor}22` }}
+   802→          >
+   803→            {item.groupIcon}
+   804→          </div>
+   805→          <div className="min-w-0 flex-1">
+   806→            <div className="flex flex-wrap items-center gap-2">
+   807→              <p className="truncate text-sm font-semibold text-foreground">{item.foodName}</p>
+   808→              <Badge
+   809→                variant="outline"
+   810→                className="shrink-0 text-[9px]"
+   811→                style={{
+   812→                  borderColor: `${item.groupColor}55`,
+   813→                  color: item.groupColor,
+   814→                  background: `${item.groupColor}11`,
+   815→                }}
+   816→              >
+   817→                {item.groupLabel}
+   818→              </Badge>
+   819→            </div>
+   820→            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+   821→              <span><strong className="text-foreground">{item.amount}g</strong></span>
+   822→              {item.urt && <span>· {item.urt}</span>}
+   823→              <span>· <strong className="text-foreground">{item.cal}</strong> kkal</span>
+   824→              <span>· P {item.protein}g</span>
+   825→              <span>· L {item.fat}g</span>
+   826→              <span>· K {item.carb}g</span>
+   827→              <span>· Serat {item.fiber}g</span>
+   828→              <span>· Na {item.sodium}mg</span>
+   829→            </div>
+   830→          </div>
+   831→        </div>
+   832→        {alts.length > 0 && (
+   833→          <TooltipProvider delayDuration={300}>
+   834→            <Tooltip>
+   835→              <TooltipTrigger asChild>
+   836→                <Button
+   837→                  variant="ghost"
+   838→                  size="sm"
+   839→                  className="h-7 px-2 text-[11px]"
+   840→                  onClick={() => setShowAlts(!showAlts)}
+   841→                >
+   842→                  <RefreshCw className="mr-1 h-3 w-3" />
+   843→                  {alts.length} alternatif
+   844→                </Button>
+   845→              </TooltipTrigger>
+   846→              <TooltipContent>
+   847→                <p>Lihat {alts.length} makanan pengganti setara nutrisi</p>
+   848→              </TooltipContent>
+   849→            </Tooltip>
+   850→          </TooltipProvider>
+   851→        )}
+   852→      </div>
+   853→
+   854→      {showAlts && alts.length > 0 && (
+   855→        <div className="mt-2 ml-12 space-y-1.5 rounded-md border border-dashed border-border/60 bg-muted/20 p-2">
+   856→          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+   857→            Alternatif Pengganti ({alts.length})
+   858→          </p>
+   859→          {alts.map((alt: any, i: number) => (
+   860→            <div
+   861→              key={i}
+   862→              className="flex items-start justify-between gap-2 rounded bg-background/60 p-1.5 text-[11px]"
+   863→            >
+   864→              <div className="min-w-0 flex-1">
+   865→                <p className="font-medium text-foreground">
+   866→                  {alt.foodName} <span className="text-muted-foreground">· {alt.amount}g</span>
+   867→                </p>
+   868→                <p className="text-[10px] text-muted-foreground">{alt.reason}</p>
+   869→              </div>
+   870→              <div className="shrink-0 text-right text-[10px] text-muted-foreground">
+   871→                <div><strong className="text-foreground">{alt.cal}</strong> kkal</div>
+   872→                <div>P {alt.protein}g</div>
+   873→              </div>
+   874→            </div>
+   875→          ))}
+   876→        </div>
+   877→      )}
+   878→    </div>
+   879→  );
+   880→}
+   881→
+   882→// ---------------------------------------------------------------------
+   883→// NutritionValidationTable — target vs actual with OK/LOW/HIGH
+   884→// ---------------------------------------------------------------------
+   885→function NutritionValidationTable({ validation }: { validation: any[] }) {
+   886→  return (
+   887→    <div className="overflow-x-auto">
+   888→      <table className="w-full text-sm">
+   889→        <thead>
+   890→          <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
+   891→            <th className="py-2 pr-3 font-medium">Nutrien</th>
+   892→            <th className="py-2 pr-3 font-medium">Target</th>
+   893→            <th className="py-2 pr-3 font-medium">Aktual</th>
+   894→            <th className="py-2 pr-3 font-medium">Pencapaian</th>
+   895→            <th className="py-2 font-medium">Status</th>
+   896→          </tr>
+   897→        </thead>
+   898→        <tbody className="divide-y divide-border/40">
+   899→          {validation.map((row: any, i: number) => {
+   900→            const statusColor =
+   901→              row.status === "OK"
+   902→                ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20"
+   903→                : row.status === "LOW"
+   904→                ? "bg-amber-500/10 text-amber-700 ring-amber-500/20"
+   905→                : "bg-rose-500/10 text-rose-700 ring-rose-500/20";
+   906→            const statusLabel =
+   907→              row.status === "OK" ? "✓ Tercapai" : row.status === "LOW" ? "↓ Kurang" : "↑ Berlebih";
+   908→            const pctColor =
+   909→              row.pct >= 95 && row.pct <= 105
+   910→                ? "text-emerald-600"
+   911→                : row.pct < 95
+   912→                ? "text-amber-600"
+   913→                : "text-rose-600";
+   914→            return (
+   915→              <tr key={i}>
+   916→                <td className="py-2 pr-3 font-medium text-foreground">{row.nutrient}</td>
+   917→                <td className="py-2 pr-3 text-muted-foreground">
+   918→                  {row.target} <span className="text-[10px]">{row.unit}</span>
+   919→                </td>
+   920→                <td className="py-2 pr-3 text-foreground">
+   921→                  {row.actual} <span className="text-[10px]">{row.unit}</span>
+   922→                </td>
+   923→                <td className={`py-2 pr-3 font-semibold ${pctColor}`}>{row.pct}%</td>
+   924→                <td className="py-2">
+   925→                  <Badge variant="outline" className={`text-[10px] ring-1 ${statusColor}`}>
+   926→                    {statusLabel}
+   927→                  </Badge>
+   928→                </td>
+   929→              </tr>
+   930→            );
+   931→          })}
+   932→        </tbody>
+   933→      </table>
+   934→      <p className="mt-2 text-[11px] text-muted-foreground">
+   935→        <Info className="mr-1 inline h-3 w-3" />
+   936→        Standar kepatuhan: 95-105% dianggap tercapai. Natrium adalah batas atas (&gt;100% = berlebih).
+   937→      </p>
+   938→    </div>
+   939→  );
+   940→}
+   941→
+   942→// ---------------------------------------------------------------------
+   943→// GroupCoverageCard — count of items per plate group
+   944→// ---------------------------------------------------------------------
+   945→function GroupCoverageCard({
+   946→  group,
+   947→  count,
+   948→  target,
+   949→}: {
+   950→  group: PlateGroup;
+   951→  count: number;
+   952→  target: number;
+   953→}) {
+   954→  const pct = Math.min(100, Math.round((count / target) * 100));
+   955→  const isComplete = count >= target;
+   956→  return (
+   957→    <div className="rounded-lg border border-border/60 bg-gradient-to-br from-background to-muted/30 p-4">
+   958→      <div className="mb-2 flex items-center justify-between">
+   959→        <span className="text-2xl">{PLATE_GROUP_ICON[group]}</span>
+   960→        {isComplete ? (
+   961→          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+   962→        ) : (
+   963→          <AlertCircle className="h-4 w-4 text-amber-500" />
+   964→        )}
+   965→      </div>
+   966→      <p className="text-xs font-medium text-muted-foreground">
+   967→        {PLATE_GROUP_LABEL[group]}
+   968→      </p>
+   969→      <p className="mt-1 text-2xl font-bold text-foreground">
+   970→        {count}
+   971→        <span className="ml-1 text-xs font-normal text-muted-foreground">
+   972→          / {target}+
+   973→        </span>
+   974→      </p>
+   975→      <Progress value={pct} className="mt-2 h-1.5" />
+   976→      <p className="mt-1.5 text-[10px] text-muted-foreground">
+   977→        {isComplete ? "Cakupan terpenuhi" : "Tambah variasi"}
+   978→      </p>
+   979→    </div>
+   980→  );
+   981→}
+   982→

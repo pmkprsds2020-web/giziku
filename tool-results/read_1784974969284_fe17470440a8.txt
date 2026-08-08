@@ -1,0 +1,402 @@
+   200→   200→    - Add ingredient (auto-increments amount if already added)
+   201→   201→    - Editable ingredient list with per-item amount input + remove button + live nutrition per ingredient
+   202→   202→    - "Hapus Semua" button to clear all ingredients
+   203→   203→    - Method/instructions textarea
+   204→   204→    - Submit with "Menyimpan..." state
+   205→   205→  - computeRecipeNutrition helper: calculates total + per-serving nutrition from recipe items (energy/protein/fat/carb/fiber/sodium × amount/100)
+   206→   206→- Wired RecipesView into page.tsx ViewRouter
+   207→   207→- Verified via agent-browser: navigated to Resep & Menu → empty state shown → clicked "Resep Baru" → filled name "Nasi Tim Sayur Bayam", 2 servings → searched & added 3 ingredients (Beras merah 100g, Bayam 100g, Daging ayam dada 100g) → live nutrition preview showed 177 kcal/porsi, 19g P, 19g K, 3g L → saved successfully → recipe card appeared in grid → opened detail dialog showing all ingredients + per-serving vs total comparison. No errors.
+   208→   208→
+   209→   209→Stage Summary:
+   210→   210→- Recipe Management module fully built and verified — 10th module in CareLivia CNMS
+   211→   211→- Create/edit/delete recipes with food picker from TKPI/DKBM database
+   212→   212→- Nutrition auto-computed per serving AND total (calories, protein, carb, fat, fiber, sodium)
+   213→   213→- Live nutrition preview updates as ingredients are added/modified
+   214→   214→- Recipe detail dialog with full breakdown (per-serving vs total, ingredients list, method)
+   215→   215→- Schema (Recipe + RecipeItem) already existed — now has full UI + API
+   216→   216→- Lint: 0 errors. All features browser-verified.
+   217→   217→
+   218→   218→Unresolved / Next phase:
+   219→   219→- PDF export server-side for clinical report (currently uses window.print())
+   220→   220→- Meal plan optimizer portion tuning (over-allocates calories)
+   221→   221→- Shopping list & exercise plan auto-recalc on preset change
+   222→   222→- Use recipes in meal plan generation (currently meal plan uses individual foods, not recipes)
+   223→   223→- Seed sample recipes for demo
+   224→   224→
+   225→   225→---
+   226→   226→Task ID: optimizer-tuning-and-recipe-seeding
+   227→   227→Agent: main (Z.ai Code)
+   228→   228→Task: QA sweep + tune meal plan optimizer (over-allocation bug) + seed sample recipes
+   229→   229→
+   230→   230→Work Log:
+   231→   231→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   232→   232→- **Meal plan optimizer tuning** (critical bug fix):
+   233→   233→  - Root cause: `fillSlot()` in meal-generator.ts used arbitrary gram caps (200g protein, 250g staple, 200g side) without respecting slot calorie target. Each item was sized independently of remaining slot calories, causing massive over-allocation (2249 kcal vs 1505 target = 49% over).
+   234→   234→  - Fix: Rewrote `fillSlot()` to be **calorie-aware**:
+   235→   235→    - Added `gramsForCal()` helper: calculates grams needed to hit a specific calorie target from a food, with reasonable min/max gram bounds
+   236→   236→    - Protein: targets 35% of *remaining* slot calories (was 35% of total slot), capped at 150g (was 200g)
+   237→   237→    - Staple/carb: targets 55% of *remaining* calories (was unlimited via remaining()), capped at 200g (was 250g)
+   238→   238→    - Side/veggie: targets 70% of *remaining* (was 100% of remaining), capped at 150g (was 200g)
+   239→   239→    - Snacks: calorie-capped to slot target (was capped at 150g regardless of calories)
+   240→   240→    - `remaining()` now returns `Math.max(0, ...)` to prevent negative overshoot
+   241→   241→  - Result: **Target 1667 kcal → Aktual 1676 kcal** (0.5% over, was 49% over). **Compliance: 90%** (was much lower). Per-slot actual % now matches target distribution (Sarapan 18% vs target 20%, Snack Pagi 10% vs 10%).
+   242→   242→- **Recipe seeding**: Created `scripts/seed-recipes.ts` with 6 Indonesian clinical recipes:
+   243→   243→  1. Nasi Tim Ayam Bayam (DM-friendly, 1 porsi)
+   244→   244→  2. Sup Ikan Kembung Tomat (high protein, 2 porsi)
+   245→   245→  3. Tahu Tempe Bumbu Kecap (plant protein, 2 porsi)
+   246→   246→  4. Bubur Oat Pisang (DM breakfast, high fiber, 1 porsi)
+   247→   247→  5. Sayur Bening Bayam Jagung (low calorie, 3 porsi)
+   248→   248→  6. Salad Apel Alpukat (healthy fats, 1 porsi)
+   249→   249→  - Each recipe resolved food names to IDs from the TKPI/DKBM database, includes description + method steps
+   250→   250→  - Verified via agent-browser: all 6 recipes appear in Recipes module grid with auto-computed per-serving nutrition (e.g., Salad Apel Alpukat: 297 kcal, 12g P, 34g K, 16g L)
+   251→   251→
+   252→   252→Stage Summary:
+   253→   253→- **Critical bug fixed**: meal plan optimizer now properly respects calorie targets (1676 vs 1667 target = 0.5% deviation, was 49% over). Compliance jumped to 90%.
+   254→   254→- 6 sample clinical recipes seeded — Recipes module now has demo data out of the box
+   255→   255→- Lint: 0 errors. All features browser-verified.
+   256→   256→
+   257→   257→Unresolved / Next phase:
+   258→   258→- PDF export server-side for clinical report (currently uses window.print())
+   259→   259→- Shopping list & exercise plan auto-recalc on preset change
+   260→   260→- Use recipes in meal plan generation (currently uses individual foods)
+   261→   261→- Patient assessment form integration with calorie engine (use assessment activity/stress in calorie compute)
+   262→   262→
+   263→   263→---
+   264→   264→Task ID: assessment-calorie-integration
+   265→   265→Agent: main (Z.ai Code)
+   266→   266→Task: QA sweep + integrate patient assessment (activity/stress) into calorie engine & meal plan/exercise generation
+   267→   267→
+   268→   268→Work Log:
+   269→   269→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   270→   270→- **Assessment → Calorie Engine Integration** (clinical accuracy improvement):
+   271→   271→  - Problem: `POST /api/meal-plan` and `POST /api/exercise` hardcoded `activity: "LIGHT"` and `stress: "NONE"` — ignoring the patient's actual clinical assessment (MUST/SGA/ECOG/Barthel/Frailty). This meant a bedridden patient (ECOG 4, Barthel 20) would get the same calorie target as an ambulatory one.
+   272→   272→  - Fix in `POST /api/meal-plan`:
+   273→   273→    - Added `assessments: { orderBy: { recordedAt: "desc" }, take: 1 }` to patient query include
+   274→   274→    - Fetch latest assessment and derive activity/stress:
+   275→   275→      - If `assessment.activity` is explicitly set → use it directly
+   276→   276→      - Else if `assessment.ecog` is set → derive: ECOG 0=MODERATE, 1=LIGHT, 2=VERY_LIGHT, ≥3=BED_REST
+   277→   277→      - Else if `assessment.barthel` is set → derive: <40=BED_REST, <60=VERY_LIGHT, else LIGHT
+   278→   278→      - If `assessment.stress` is set → use it (defaults to NONE if not assessed)
+   279→   279→    - Fallback: LIGHT/NONE if no assessment exists
+   280→   280→  - Applied the same logic to `POST /api/exercise` — exercise plan now uses assessment-derived activity/stress for calorie target calculation
+   281→   281→  - Clinical impact: bedridden patients (ECOG 3-4, Barthel <40) now get BED_REST activity factor (1.1×) instead of LIGHT (1.3×), reducing calorie target appropriately. Patients with severe stress (SEVERE/VERY_SEVERE) get higher stress factor (1.3×/1.5×) reflecting increased metabolic demand.
+   282→   282→- Verified via agent-browser: generated meal plan for Siti Aminah (has assessment: activity LIGHT, stress MILD) → target 1667 kcal, aktual 1676 kcal, compliance 90%. No errors. The AI reasoning correctly evaluates the plan.
+   283→   283→
+   284→   284→Stage Summary:
+   285→   285→- Patient assessment now drives calorie calculation in both meal plan and exercise plan generation
+   286→   286→- Activity level auto-derived from ECOG/Barthel if not explicitly set (clinical fallback chain)
+   287→   287→- Stress level from assessment used in calorie formula
+   288→   288→- Bedridden/severely ill patients get appropriately reduced calorie targets
+   289→   289→- System is now clinically cohesive: assessment → calorie engine → meal plan → exercise plan
+   290→   290→- Lint: 0 errors. All features browser-verified.
+   291→   291→
+   292→   292→Unresolved / Next phase:
+   293→   293→- PDF export server-side for clinical report (currently uses window.print())
+   294→   294→- Shopping list & exercise plan auto-recalc on preset change
+   295→   295→- Use recipes in meal plan generation (currently uses individual foods)
+   296→   296→- Display assessment-derived activity/stress in meal plan UI (show "Aktivitas: Bed Rest (dari ECOG 3)" banner)
+   297→   297→
+   298→   298→---
+   299→   299→Task ID: clinical-context-banner
+   300→   300→Agent: main (Z.ai Code)
+   301→   301→Task: QA sweep + display assessment-derived activity/stress clinical context banner in meal plan UI
+   302→   302→
+   303→   303→Work Log:
+   304→   304→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   305→   305→- **Clinical Context Banner** in Meal Plan view:
+   306→   306→  - Updated `GET /api/meal-plan` to include `patient.assessments` (latest 1, ordered desc) + `patient.diagnoses` (active only) in the response
+   307→   307→  - Added `ClinicalContextBanner` component to meal-plan-view.tsx — displays at the top of MealPlanDetail, above the preset badge
+   308→   308→  - Banner shows:
+   309→   309→    - **Aktivitas**: activity level with source attribution ("dari asesmen" / "dari ECOG 3" / "dari Barthel 45") — makes it transparent to doctors where the activity value came from
+   310→   310→    - **Stress**: stress level (only shown if not NONE) with source
+   311→   311→    - **Clinical flags**: color-coded warning badges for abnormal assessment results:
+   312→   312→      - MUST: Risiko Tinggi (rose) / Sedang (amber)
+   313→   313→      - SGA: Malnutrisi Berat (rose) / Sedang (amber)
+   314→   314→      - Frail (rose) / Prefrail (amber)
+   315→   315→      - Fall Risk: Tinggi (rose) / Sedang (amber)
+   316→   316→      - Barthel: Ketergantungan (<60, rose)
+   317→   317→    - **Assessment date**: when the assessment was recorded
+   318→   318→  - Gradient background (primary/5 to chart-2/5) with border-primary/30 for clinical styling
+   319→   319→  - Responsive flex-wrap layout for mobile
+   320→   320→- Verified via agent-browser: generated meal plan for Siti Aminah → banner shows "Konteks Klinis: Aktivitas: Ringan (dari asesmen), SGA: Sedang, Asesmen: 18 Jul 2026". The SGA: Sedang flag appears as amber warning (patient has SGA B from assessment). No errors.
+   321→   321→
+   322→   322→Stage Summary:
+   323→   323→- Clinical context now visible in meal plan UI — doctors can see at a glance what assessment values drove the calorie calculation
+   324→   324→- Activity/stress source attribution ("dari asesmen" / "dari ECOG" / "dari Barthel") provides full clinical transparency
+   325→   325→- Color-coded clinical flags highlight abnormal assessment results (malnutrition risk, frailty, fall risk, dependency)
+   326→   326→- Banner appears above preset badge, creating a clear clinical context → preset → plan hierarchy
+   327→   327→- Lint: 0 errors. All features browser-verified.
+   328→   328→
+   329→   329→Unresolved / Next phase:
+   330→   330→- PDF export server-side for clinical report (currently uses window.print())
+   331→   331→- Shopping list & exercise plan auto-recalc on preset change
+   332→   332→- Use recipes in meal plan generation (currently uses individual foods)
+   333→   333→- Food record compliance vs meal plan target comparison
+   334→   334→
+   335→   335→---
+   336→   336→Task ID: food-record-compliance
+   337→   337→Agent: main (Z.ai Code)
+   338→   338→Task: QA sweep + build Food Record compliance vs Meal Plan target comparison
+   339→   339→
+   340→   340→Work Log:
+   341→   341→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   342→   342→- **Food Record Compliance Comparison** (closes clinical loop: plan → actual intake → compliance):
+   343→   343→  - Added `useMealPlans` hook import to food-record-view.tsx
+   344→   344→  - Fetches latest meal plan for the selected patient via `useMealPlans(selectedPatientId)`
+   345→   345→  - Added `ComplianceComparison` component — displays between the daily summary bar and the records-by-slot section
+   346→   346→  - Features:
+   347→   347→    - **Overall compliance score**: weighted average of all 6 nutrients, color-coded (≥80% emerald/Sangat Baik, ≥60% amber/Cukup, <60% rose/Perlu Perhatian)
+   348→   348→    - **Per-nutrient comparison cards** (6 nutrients): Kalori, Protein, Karbohidrat, Lemak, Serat, Natrium
+   349→   349→      - Each shows actual vs target value + unit
+   350→   350→      - Progress bar (capped at 100%) with color: emerald (good), amber (warning), rose (bad)
+   351→   351→      - Status label per nutrient: Tercapai / Kurang / Berlebih (for regular) or Aman / Melebihi Batas (for sodium, inverted)
+   352→   352→      - Percentage of target displayed
+   353→   353→    - **Sodium handling**: inverted logic (under target = good, over = bad) since sodium has a max limit
+   354→   354→    - **Preset badge**: shows which preset the meal plan used
+   355→   355→    - **Meal plan date**: when the plan was created
+   356→   356→    - **Empty state**: "Belum ada catatan asupan hari ini" when no records exist
+   357→   357→  - Only displays when a meal plan exists for the patient (otherwise hidden)
+   358→   358→- Verified via agent-browser: selected Siti Aminah (has meal plan with preset "Save 1 - Diabetes Siti") → compliance section shows "27% — Perlu Perhatian" (because few food records today: 132 kcal actual vs 1667 kcal target = 8%). All 6 nutrient cards render with status labels (Kurang/Aman). Preset badge + date displayed. No errors.
+   359→   359→
+   360→   360→Stage Summary:
+   361→   361→- Clinical loop now complete: Meal Plan (target) → Food Record (actual intake) → Compliance (comparison)
+   362→   362→- Doctors can see at a glance whether patient is meeting their nutrition plan
+   363→   363→- Per-nutrient breakdown with color-coded progress bars highlights specific deficiencies/excesses
+   364→   364→- Sodium handled with inverted logic (max limit, not target)
+   365→   365→- Overall compliance score provides quick clinical summary
+   366→   366→- Lint: 0 errors. All features browser-verified.
+   367→   367→
+   368→   368→Unresolved / Next phase:
+   369→   369→- PDF export server-side for clinical report (currently uses window.print())
+   370→   370→- Shopping list & exercise plan auto-recalc on preset change
+   371→   371→- Use recipes in meal plan generation (currently uses individual foods)
+   372→   372→- Weekly/monthly compliance trends chart
+   373→   373→
+   374→   374→---
+   375→   375→Task ID: weekly-compliance-trends
+   376→   376→Agent: main (Z.ai Code)
+   377→   377→Task: QA sweep + build weekly compliance trends API + chart in Food Record view
+   378→   378→
+   379→   379→Work Log:
+   380→   380→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   381→   381→- **Weekly Compliance Trends** feature:
+   382→   382→  - API: Created `GET /api/compliance/weekly?patientId=xxx` — aggregates food records for the past 7 days, computes daily compliance against latest meal plan target (6-nutrient weighted average, sodium inverted), returns:
+   383→   383→    - `hasPlan`: boolean (false if no meal plan exists)
+   384→   384→    - `plan`: { id, date, presetName, target }
+   385→   385→    - `days`: array of 7 days, each with { date, dayLabel (Sen/Sel/...), dateLabel, totals (cal/protein/fat/carb/fiber/sodium), compliance, recordCount }
+   386→   386→    - `weeklyAvg`: { compliance, cal } — 7-day average compliance + average daily calories
+   387→   387→  - Hook: Added `useWeeklyCompliance(patientId)` to use-carelivia.ts
+   388→   388→  - Component: `WeeklyComplianceChart` in food-record-view.tsx — displays between ComplianceComparison and Records by slot:
+   389→   389→    - **Header**: "Tren Compliance 7 Hari" + preset badge + weekly average stats (compliance % + avg kcal/day, color-coded)
+   390→   390→    - **Bar chart** (recharts): 7-day compliance as colored bars (emerald ≥80%, amber 60-79%, rose <60%, slate for empty days), Y-axis 0-100%, X-axis day labels, tooltip showing compliance % + calories + record count
+   391→   391→    - **Legend**: color key (Baik/Cukup/Kurang/Kosong)
+   392→   392→    - **Daily breakdown grid**: 7 cells showing day name + compliance % + calorie count per day
+   393→   393→  - Only displays when patient has a meal plan (weeklyData.hasPlan === true)
+   394→   394→- Verified via agent-browser: selected Siti Aminah → weekly chart shows "Tren Compliance 7 Hari" with preset "Save 1 - Diabetes Siti", weekly avg 18% compliance (low because few food records), 7-day bar chart with day labels (Min/Sen/Sel/Rab/Kam/Jum/Sab), legend, and daily breakdown grid. No errors.
+   395→   395→
+   396→   396→Stage Summary:
+   397→   397→- 7-day compliance trend visualization completed — doctors can monitor patient adherence over time
+   398→   398→- Color-coded bar chart provides instant visual feedback on daily compliance
+   399→   399→- Weekly average stats give quick clinical summary
+   400→   400→- Daily breakdown grid shows per-day detail
+   401→   401→- Integrates with existing meal plan target + food record system
+   402→   402→- Lint: 0 errors. All features browser-verified.
+   403→   403→
+   404→   404→Unresolved / Next phase:
+   405→   405→- PDF export server-side for clinical report (currently uses window.print())
+   406→   406→- Shopping list & exercise plan auto-recalc on preset change
+   407→   407→- Use recipes in meal plan generation (currently uses individual foods)
+   408→   408→- Add food records for historical dates to populate the weekly chart with real data
+   409→   409→
+   410→   410→---
+   411→   411→Task ID: pdf-export-enhancement
+   412→   412→Agent: main (Z.ai Code)
+   413→   413→Task: QA sweep + enhance PDF export for clinical report (professional print-to-PDF)
+   414→   414→
+   415→   415→Work Log:
+   416→   416→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   417→   417→- **Enhanced PDF export** for clinical report — upgraded from basic window.print() to professional A4-optimized print:
+   418→   418→  - **Comprehensive print stylesheet** in globals.css (`@media print`):
+   419→   419→    - Hides all non-report UI: sidebar (`aside`), header, footer, and elements with sidebar/header/footer classes
+   420→   420→    - Resets layout: `main` becomes full-page with zero padding/margin
+   421→   421→    - `.cl-report` container: A4-optimized (full width, no border/shadow, 11pt font, 1.5 line-height, white background)
+   422→   422→    - `@page { size: A4; margin: 15mm 12mm }` — proper A4 page with clinical margins
+   423→   423→    - `-webkit-print-color-adjust: exact` — ensures colors print correctly (emerald header, badges, etc.)
+   424→   424→    - `break-inside: avoid` on report sections — prevents ugly page breaks mid-section
+   425→   425→    - Tables: `page-break-inside: avoid` on rows, `thead`/`tfoot` repeat on each page
+   426→   426→    - `.cl-gradient-primary` converts to solid emerald for print reliability (gradients can render poorly in PDF)
+   427→   427→  - **Improved print button UX** in report-view.tsx:
+   428→   428→    - Toast instruction: "Membuka dialog cetak — pilih 'Simpan sebagai PDF' sebagai printer untuk mengunduh PDF" (5s duration)
+   429→   429→    - 500ms delay before `window.print()` to allow toast to display
+   430→   430→  - The report container already had `cl-report` class — print CSS targets it directly
+   431→   431→- Verified via agent-browser: navigated to Laporan Klinis, selected Siti Aminah → all 9 report sections render (LAPORAN NUTRISI KLINIS, PROFIL PASIEN, ANTROPOMETRI, DIAGNOSIS AKTIF, TARGET GIZI, RENCANA MAKAN, EVALUASI AI CARELIVIA, DOKTER PENANGGUNG JAWAB) + "Cetak / Simpan PDF" button visible. No errors.
+   432→   432→
+   433→   433→Stage Summary:
+   434→   434→- PDF export now produces professional A4 clinical reports via browser print-to-PDF
+   435→   435→- Print CSS hides all app chrome (sidebar/header/footer), shows only the report
+   436→   436→- A4 page setup with clinical margins (15mm top/bottom, 12mm left/right)
+   437→   437→- Color-accurate printing (emerald header, color-coded badges)
+   438→   438→- Section-level page break prevention for clean pagination
+   439→   439→- Table headers/footers repeat on each printed page
+   440→   440→- Gradient backgrounds converted to solid colors for print reliability
+   441→   441→- Toast guides user to select "Save as PDF" in print dialog
+   442→   442→- Lint: 0 errors. All features browser-verified.
+   443→   443→
+   444→   444→Unresolved / Next phase:
+   445→   445→- Use recipes in meal plan generation (currently uses individual foods)
+   446→   446→- Shopping list & exercise plan auto-recalc on preset change
+   447→   447→- Add more food records for historical dates to populate weekly compliance chart
+   448→   448→- Patient assessment integration with report (show MUST/SGA/ECOG scores in PDF)
+   449→   449→
+   450→   450→---
+   451→   451→Task ID: assessment-in-report
+   452→   452→Agent: main (Z.ai Code)
+   453→   453→Task: QA sweep + add assessment scores (MUST/SGA/ECOG/Barthel/Frailty) to clinical report PDF
+   454→   454→
+   455→   455→Work Log:
+   456→   456→- QA: Ran lint (0 errors), visited all 10 modules via agent-browser — no runtime errors, no console warnings, app stable.
+   457→   457→- **Assessment scores in clinical report** — added new "Asesmen Gizi & Fungsional" section (section 4b) between Diagnosis and Target Gizi:
+   458→   458→  - Fetches `latestAssessment` from patient data (already included in `usePatient` API response)
+   459→   459→  - Added `AssessmentScoreCard` component — color-coded card showing label, score, and category:
+   460→   460→    - **MUST**: score + Risiko Rendah/Sedang/Tinggi (emerald/amber/rose)
+   461→   461→    - **SGA**: A/B/C + Gizi Baik/Sedang/Berat
+   462→   462→    - **NRS-2002**: score + Berisiko/Tidak Berisiko
+   463→   463→    - **MNA**: score + Normal/Berisiko/Malnutrisi
+   464→   464→    - **ECOG**: 0-4 + Aktif/Ringan/Bisa Jalan/Bedrest
+   465→   465→    - **Barthel**: 0-100 + Mandiri/Bantuan Minimal/Sedang/Ketergantungan
+   466→   466→    - **FRAIL**: 0-5 + Robust/Prefrail/Frail
+   467→   467→    - **Fall Risk**: Low/Moderate/High
+   468→   468→    - **Hand Grip**: kg + Normal/Risiko Sarcopenia (<27kg)
+   469→   469→    - **Calf Circ**: cm + Normal/Risiko Sarcopenia (<31cm)
+   470→   470→  - Activity & stress badges shown if set
+   471→   471→  - Clinical notes from assessment displayed
+   472→   472→  - Assessment date displayed
+   473→   473→  - Section only renders when patient has an assessment (graceful empty)
+   474→   474→  - All cards use print-friendly color coding (emerald/amber/rose borders + backgrounds)
+   475→   475→- Added `ClipboardCheck` icon import for the section header
+   476→   476→- Verified via agent-browser: opened Laporan Klinis, selected Siti Aminah → "ASESMEN GIZI & FUNGSIONAL" section renders with all scores: MUST 0 (Risiko Rendah), SGA B (Sedang), NRS-2002 0 (Tidak Berisiko), MNA 12 (Normal), BARTHEL 100 (Mandiri), FRAIL 0 (Robust), Aktivitas, Tanggal asesmen 18 Juli 2026. No errors.
+   477→   477→
+   478→   478→Stage Summary:
+   479→   479→- Clinical report now includes complete assessment scores — making it a comprehensive clinical document
+   480→   480→- 10 screening tools displayed: MUST, SGA, NRS-2002, MNA, ECOG, Barthel, FRAIL, Fall Risk, Hand Grip, Calf Circ
+   481→   481→- Color-coded cards provide instant visual clinical status
+   482→   482→- Activity/stress/notes from assessment included
+   483→   483→- Report is now print-ready with: Profil → Antropometri → Diagnosis → **Asesmen** → Target Gizi → Rencana Makan → Exercise → Evaluasi AI → Dokter
+   484→   484→- Lint: 0 errors. All features browser-verified.
+   485→   485→
+   486→   486→Unresolved / Next phase:
+   487→   487→- Use recipes in meal plan generation (currently uses individual foods)
+   488→   488→- Shopping list & exercise plan auto-recalc on preset change
+   489→   489→- Add more food records for historical dates to populate weekly compliance chart
+   490→   490→- Meal plan items in report (show actual menu, not just targets)
+   491→   491→
+   492→   492→---
+   493→   493→Task ID: saved-meal-comparison
+   494→   494→Agent: main (Z.ai Code)
+   495→   495→Task: Build Saved Meal Plan & Food Record Comparison feature (comprehensive)
+   496→   496→
+   497→   497→Work Log:
+   498→   498→- **Schema**: Added 3 new models — SavedMenu (name, category, notes, nutrition snapshot, version, useCount, lastUsedAt, soft delete) + SavedMenuItem (foodId, amount, foodName, urt, nutrition snapshot) + ComparisonHistory (patientId, mealPlanId, savedMenuName, foodRecordDate, complianceScore, results JSON, aiInsight). Added relations to Patient and Food. db:push successful.
+   499→   499→- **API routes** (3 new):
+   500→   500→  - `GET/POST /api/saved-menus` — list with patientId/category/q filters + create with auto nutrition totals
+   501→   501→  - `GET/PUT/PATCH/DELETE /api/saved-menus/[id]` — single menu CRUD + PATCH to mark as used (increments useCount, updates lastUsedAt)
+   502→   502→  - `GET/POST /api/comparisons` — list history + run comparison (fetches meal plan or saved menu items + food records for date, computes nutrient comparison with pct/diff, food-level comparison with matched/replaced/removed/added, compliance score, AI insight via z-ai-web-dev-sdk)
+   503→   503→- **Hooks** (7 new): useSavedMenus, useCreateSavedMenu, useUpdateSavedMenu, useMarkSavedMenuUsed, useDeleteSavedMenu, useComparisons, useRunComparison
+   504→   504→- **Meal Plan view integration**: Added "Simpan Menu" and "Pilih Menu" buttons to each slot header (next to "Tambah"). Added SaveMenuDialog (name, notes, preview) and SavedMenuPickerDialog (debounced search, category-filtered list, click to load). Loading a saved menu replaces existing slot items then adds the saved menu's items.
+   505→   505→- **Saved Meal Library view** (`saved-menus-view.tsx`, ~600 lines) — new 11th module:
+   506→   506→  - Patient selector + search + category filter
+   507→   507→  - **Saved menu table**: Nama, Kategori, Kalori, Protein, Bahan, Terakhir Dipakai, Aksi (Lihat/Duplikasi/Hapus)
+   508→   508→  - **MenuDetailDialog**: nutrition grid + ingredient list + metadata
+   509→   509→  - **CompareDialog** (the core feature):
+   510→   510→    - Source selector: Meal Plan or Saved Menu
+   511→   511→    - Date picker for food record
+   512→   512→    - **Compliance gauge**: large % with color-coded progress ring (emerald ≥80%, amber ≥60%, rose <60%)
+   513→   513→    - **Nutrient comparison**: 6 progress bars (Kalori, Protein, Lemak, Karbohidrat, Serat, Natrium) with target vs actual, %, selisih, color-coded status
+   514→   514→    - **Radar Chart** (recharts): Target vs Aktual for all nutrients
+   515→   515→    - **Food comparison**: 4 stat cards (Cocok/Diganti/Dihapus/Tambahan) + replaced items detail
+   516→   516→    - **AI Insight CareLivia**: real LLM-generated analysis in Indonesian (5 bullet points covering compliance, gaps, excesses, food replacements, recommendations)
+   517→   517→  - **Comparison History section**: table of past comparisons (date, plan name, food record date, score, calories, protein)
+   518→   518→- Added "saved-menus" to ViewKey + sidebar nav (group: "data", icon: ChefHat, label: "Saved Meal Library")
+   519→   519→- Verified via agent-browser:
+   520→   520→  1. ✅ Save Menu — clicked "Simpan Menu" on Sarapan slot → dialog with preview (2 bahan, 309 kcal, 18g protein) → saved "Sarapan DM Siti" → toast "disimpan ke Saved Meal Library"
+   521→   521→  2. ✅ Saved Meal Library — navigated → table shows "Sarapan DM Siti | Sarapan | 309 kcal | 18g protein | 2 bahan"
+   522→   522→  3. ✅ Compare — opened Compare dialog → selected Meal Plan "Save 1 - Diabetes Siti · 1667 kcal" → clicked "Jalankan Perbandingan" → results: compliance 27%, nutrient comparison bars, radar chart, food comparison (Cocok/Diganti/Dihapus/Tambahan), AI Insight with 5 bullet points analyzing malnutrition risk and recommendations
+   523→   523→- Fixed client-side error: SaveMenuDialog was referencing out-of-scope mutation variable. Refactored to use callback pattern.
+   524→   524→
+   525→   525→Stage Summary:
+   526→   526→- **Saved Meal Plan & Food Record Comparison** feature fully built and verified — 11th module in CareLivia CNMS
+   527→   527→- Save any meal slot as a named reusable template (e.g., "Sarapan Diabetes 1800 kkal")
+   528→   528→- Search and load saved menus into any slot
+   529→   529→- Compare meal plan or saved menu vs food record with:
+   530→   530→  - Compliance gauge (0-100%)
+   531→   531→  - 6-nutrient progress bars (target vs actual vs selisih)
+   532→   532→  - Radar chart (target vs actual visualization)
+   533→   533→  - Food-level comparison (matched/replaced/removed/added)
+   534→   534→  - AI-generated insight in Indonesian
+   535→   535→- Comparison history saved with full results for audit trail
+   536→   536→- Lint: 0 errors. All features browser-verified.
+   537→   537→
+   538→   538→CareLivia CNMS now has 11 modules: Dashboard, Patients, Calorie Calculator, AI Meal Plan, Exercise Plan, Food Database, Recipes, Food Record, Saved Meal Library, Shopping Planner, Clinical Report.
+   539→   539→
+   540→   540→---
+   541→   541→Task ID: save-all-menus-button
+   542→   542→Agent: main (Z.ai Code)
+   543→   543→Task: Add "Simpan Semua Menu" button to save all 6 meal slots at once
+   544→   544→
+   545→   545→Work Log:
+   546→   546→- Added "Simpan Semua Menu" button to MealPlanDetail — appears prominently between preset badge and KPI cards in a highlighted border-2 primary/30 box with Save icon + description + button
+   547→   547→- Added `saveAllOpen` state to MealPlanDetail
+   548→   548→- Created `SaveAllMenusDialog` component:
+   549→   549→  - Shows summary table of all 6 slots (Sarapan, Snack Pagi, Makan Siang, Snack Sore, Makan Malam, Snack Malam) with item count, calories, protein per slot
+   550→   550→  - Empty slots shown with reduced opacity + "Kosong" badge
+   551→   551→  - Total row: total items + total calories
+   552→   552→  - Name input ("Nama Dasar Menu") — used as prefix for all 6 saved menus
+   553→   553→  - Live preview of naming convention: "[Nama] - Sarapan", "[Nama] - Snack Pagi", dst.
+   554→   554→  - Optional notes field (applies to all menus)
+   555→   555→  - Save button shows count: "Simpan 6 Menu" (dynamic based on slots with items)
+   556→   556→  - On save: loops through all 6 slots, creates a SavedMenu for each slot that has items, naming convention "{baseName} - {slotLabel}"
+   557→   557→  - Success toast: "6 menu tersimpan ke Saved Meal Library"
+   558→   558→- Verified via agent-browser: selected Siti Aminah → meal plan with 6 slots all having items → clicked "Simpan Semua" → dialog showed all 6 slots with per-slot summary (Sarapan: 2 bahan 309 kcal, Snack Pagi: 1 bahan 176 kcal, etc.) → entered name "Diet DM Siti" → clicked "Simpan 6 Menu" → navigated to Saved Meal Library → all 6 menus appeared: "Diet DM Siti - Sarapan", "Diet DM Siti - Snack Pagi", "Diet DM Siti - Makan Siang", "Diet DM Siti - Snack Sore", "Diet DM Siti - Makan Malam", "Diet DM Siti - Snack Malam". No errors.
+   559→   559→
+   560→   560→Stage Summary:
+   561→   561→- "Simpan Semua Menu" button added — saves all 6 waktu makan at once with a single name prefix
+   562→   562→- Each slot saved as separate SavedMenu with auto-generated name "{prefix} - {slot label}"
+   563→   563→- Dialog shows per-slot summary before saving (item count, calories, protein)
+   564→   564→- Empty slots are skipped (only slots with items are saved)
+   565→   565→- All saved menus appear in Saved Meal Library for comparison with Food Record
+   566→   566→- Lint: 0 errors. Browser-verified.
+   567→   567→
+   568→   568→---
+   569→   569→Task ID: saved-meal-plan-restructure
+   570→   570→Agent: main (Z.ai Code)
+   571→   571→Task: Restructure Saved Meal Library to save 1 complete meal plan (parent-child) instead of 6 separate menus
+   572→   572→
+   573→   573→Work Log:
+   574→   574→- **Schema**: Added 2 new models — SavedMealPlan (parent: name, description, notes, daily nutrition totals, version, useCount, lastUsedAt, soft delete) + SavedMealPlanItem (child: slot, foodId, amount, foodName, urt, nutrition snapshot). Parent-child relation: 1 SavedMealPlan has many SavedMealPlanItems across all 6 slots. Added relations to Patient and Food. db:push successful.
+   575→   575→- **API routes**:
+   576→   576→  - `GET/POST /api/saved-meal-plans` — list with patientId/q filters + create with auto daily totals from all items
+   577→   577→  - `GET/PATCH/DELETE /api/saved-meal-plans/[id]` — single plan CRUD + PATCH to mark as used
+   578→   578→  - Updated `POST /api/comparisons` to accept `savedMealPlanId` — fetches SavedMealPlan with all items across 6 slots, computes nutrient comparison + food comparison + compliance + AI insight
+   579→   579→- **Hooks** (4 new): useSavedMealPlans, useCreateSavedMealPlan, useMarkSavedMealPlanUsed, useDeleteSavedMealPlan. Updated useRunComparison to accept savedMealPlanId.
+   580→   580→- **Meal Plan view — "Simpan Semua Menu" restructured**:
+   581→   581→  - Changed `onSaveAll` to create **1 SavedMealPlan record** (not 6 SavedMenu records)
+   582→   582→  - All items from all 6 slots collected into `allItems` array with slot field
+   583→   583→  - Single API call creates parent + all child items in one transaction
+   584→   584→  - Dialog updated: "Simpan Meal Plan Utuh" (not "Simpan Semua Menu Hari Ini"), "Nama Meal Plan" (not "Nama Dasar Menu"), no naming convention suffixes
+   585→   585→  - Description: "Simpan 1 Meal Plan lengkap sebagai 1 template"
+   586→   586→  - Button: "Simpan Meal Plan" (not "Simpan 6 Menu")
+   587→   587→- **Saved Meal Library view — completely rewritten**:
+   588→   588→  - Table columns: Nama Meal Plan, Kalori, Protein, Bahan, Waktu Makan (6/6), Terakhir Dipakai, Aksi
+   589→   589→  - Each row = 1 complete meal plan (not 6 separate menus)
+   590→   590→  - **MealPlanDetailDialog**: shows daily nutrition summary (4 boxes: kcal/P/K/L) + all 6 slots with per-slot items, calories, protein — entire day in one view
+   591→   591→  - **LoadMealPlanDialog**: "Gunakan Meal Plan" — loads all 6 slots into target meal plan at once (deletes existing items, adds all saved plan items), marks saved plan as used
+   592→   592→  - **CompareDialog**: updated to support "Saved Meal Plan" source type — uses savedMealPlanId, fetches all items across 6 slots for comparison
+   593→   593→  - Comparison results: compliance gauge, 6 nutrient progress bars, radar chart, food comparison (matched/replaced/removed/added), AI insight
+   594→   594→  - Comparison history table preserved
+   595→   595→- Verified via agent-browser:
+   596→   596→  1. ✅ Simpan Semua Menu → dialog "Simpan Meal Plan Utuh" → entered "Diet DM Siti Harian" → saved as 1 record
+   597→   597→  2. ✅ Saved Meal Library → table shows 1 row: "Diet DM Siti Harian | 1677 kcal | 91g protein | 11 bahan | 6/6 waktu makan"
+   598→   598→  3. ✅ Lihat detail → dialog shows daily summary (1677 kcal, 91g P, 91g K, 111g L) + all 6 slots (Sarapan: 309 kcal 2 bahan, Snack Pagi: 176 kcal, etc.) with per-item details (URT, gram, P/K/L)
+   599→   599→  4. ✅ No errors, lint clean
+
+[showing lines 200-599 of 2002; use offset=600 with limit to continue reading]

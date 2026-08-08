@@ -1,0 +1,846 @@
+// =====================================================================
+// CareLivia CNMS — Clinical Nutrition Management System
+// Prisma Schema (SQLite) — adapted from enterprise Supabase design
+// All tables carry audit fields: createdAt, updatedAt, deletedAt, version
+// Soft delete via deletedAt; repository layer enforces filtering.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// ENUMS (enforced at application layer for SQLite)
+// ---------------------------------------------------------------------
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum BloodType {
+  A
+  B
+  AB
+  O
+  UNKNOWN
+}
+
+enum Religion {
+  ISLAM
+  KRISTEN
+  KATOLIK
+  HINDU
+  BUDDHA
+  KONGHUCU
+  OTHER
+}
+
+enum DiagnosisType {
+  DM
+  HT
+  CHF
+  CKD
+  CKD_ND
+  CKD_HD
+  CKD_PD
+  LIVER
+  CANCER
+  DYSLIPIDEMIA
+  GOUT
+  GERD
+  PUD
+  IBD
+  OBESITY
+  MALNUTRITION
+  SARCOPENIA
+  POST_OP
+  PREGNANCY
+  LACTATION
+  PEDIATRIC
+  GERIATRIC
+  STROKE
+  COPD
+  OTHER
+}
+
+enum ActivityLevel {
+  BED_REST
+  VERY_LIGHT
+  LIGHT
+  MODERATE
+  HEAVY
+}
+
+enum StressLevel {
+  NONE
+  MILD
+  MODERATE
+  SEVERE
+  VERY_SEVERE
+}
+
+enum BMICategory {
+  SEVERELY_UNDERWEIGHT
+  UNDERWEIGHT
+  NORMAL
+  OVERWEIGHT
+  OBESE_I
+  OBESE_II
+  OBESE_III
+}
+
+enum MealSlot {
+  BREAKFAST
+  MORNING_SNACK
+  LUNCH
+  AFTERNOON_SNACK
+  DINNER
+  EVENING_SNACK
+}
+
+enum FoodSource {
+  TKPI
+  DKBM
+  USDA
+  CUSTOM
+}
+
+enum ShoppingPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ExerciseType {
+  AEROBIC
+  RESISTANCE
+  FLEXIBILITY
+  BALANCE
+  FUNCTIONAL
+}
+
+enum ExerciseIntensity {
+  LOW
+  MODERATE
+  HIGH
+}
+
+// ---------------------------------------------------------------------
+// MASTER DATA — FOOD DATABASE
+// ---------------------------------------------------------------------
+
+model FoodCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  icon      String?
+  foods     Food[]
+  subcategories FoodSubcategory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FoodLabel {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  color     String   @default("#10b981")
+  foods     Food[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Food {
+  id           String       @id @default(cuid())
+  name         String
+  englishName  String?
+  alias        String?
+  code         String?
+  categoryId   String
+  category     FoodCategory @relation(fields: [categoryId], references: [id])
+  subcategoryId String?
+  subcategory  FoodSubcategory? @relation(fields: [subcategoryId], references: [id])
+  source       FoodSource   @default(TKPI)
+  description  String?
+  // Nutrition per 100g (edible portion)
+  energy       Float        // kcal
+  protein      Float        // g
+  fat          Float        // g
+  carb         Float        // g
+  fiber        Float        @default(0) // g
+  water        Float        @default(0) // g
+  ash          Float        @default(0) // g
+  sodium       Float        @default(0) // mg
+  potassium    Float        @default(0) // mg
+  calcium      Float        @default(0) // mg
+  magnesium    Float        @default(0) // mg
+  iron         Float        @default(0) // mg
+  phosphorus   Float        @default(0) // mg
+  zinc         Float        @default(0) // mg
+  vitA         Float        @default(0) // RE
+  vitB1        Float        @default(0) // mg
+  vitB2        Float        @default(0) // mg
+  vitB6        Float        @default(0) // mg
+  vitB12       Float        @default(0) // mcg
+  vitC         Float        @default(0) // mg
+  vitD         Float        @default(0) // mcg
+  vitE         Float        @default(0) // mg
+  vitK         Float        @default(0) // mcg
+  cholesterol  Float        @default(0) // mg
+  gi           Int          @default(0) // glycemic index 0-100
+  // Household measure (URT — Unit Rumah Tangga)
+  urt          String?      // e.g. "1 porsi sedang"
+  urtGram      Float?       // gram weight of one URT
+  bdd          Float        @default(100) // Berat Dapat Dimakan %
+  // Price
+  price        Float        @default(0) // IDR per 100g (current)
+  priceUnit    String       @default("g")
+  priceLocation String?
+  priceSource  String?
+  priceUpdatedAt DateTime?
+  priceIsEstimate Boolean   @default(false)
+  unit         String       @default("g")
+  imageUrl     String?
+  tags         String       @default("") // comma separated
+  approved     Boolean      @default(true)
+  version      Int          @default(1)
+  labels       FoodLabel[]
+  recipeItems  RecipeItem[]
+  mealItems    MealPlanItem[]
+  recordItems  FoodRecord[]
+  shoppingItems ShoppingItem[]
+  savedMenuItems SavedMenuItem[]
+  savedMealPlanItems SavedMealPlanItem[]
+  priceHistory FoodPriceHistory[]
+  changeLogs   FoodChangeLog[]
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([name])
+}
+
+// ---------------------------------------------------------------------
+// RECIPE
+// ---------------------------------------------------------------------
+
+model Recipe {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  servings    Int          @default(1)
+  method      String?
+  imageUrl    String?
+  items       RecipeItem[]
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model RecipeItem {
+  id        String   @id @default(cuid())
+  recipeId  String
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  foodId    String
+  food      Food     @relation(fields: [foodId], references: [id])
+  amount    Float    // grams
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recipeId])
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------
+// PATIENT
+// ---------------------------------------------------------------------
+
+model Patient {
+  id            String               @id @default(cuid())
+  mrn           String               @unique // Medical Record Number
+  name          String
+  gender        Gender
+  birthDate     DateTime
+  phone         String?
+  address       String?
+  religion      Religion             @default(ISLAM)
+  bloodType     BloodType            @default(UNKNOWN)
+  allergy       String               @default("")
+  // last known static anthropometry (latest snapshot)
+  height        Float?               // cm
+  weight        Float?               // kg
+  // clinical flags
+  isPregnant    Boolean              @default(false)
+  pregnancyTrimester Int             @default(0)
+  isLactating   Boolean              @default(false)
+  lactationMonth Int                 @default(0)
+  notes         String?
+  // relations
+  diagnoses     Diagnosis[]
+  anthropometry Anthropometry[]
+  assessments   NutritionAssessment[]
+  mealPlans     MealPlan[]
+  exercisePlans ExercisePlan[]
+  foodRecords   FoodRecord[]
+  weightRecords WeightRecord[]
+  shoppingLists ShoppingList[]
+  presets       NutritionPreset[]
+  savedMenus    SavedMenu[]
+  savedMealPlans SavedMealPlan[]
+  comparisons   ComparisonHistory[]
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+}
+
+model Diagnosis {
+  id          String       @id @default(cuid())
+  patientId   String
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type        DiagnosisType
+  icd         String?
+  severity    String?
+  notes       String?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([patientId])
+}
+
+model Anthropometry {
+  id            String       @id @default(cuid())
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedAt    DateTime     @default(now())
+  weight        Float        // kg
+  height        Float        // cm
+  bmi           Float
+  bmiCategory   String
+  waist         Float?
+  hip           Float?
+  whr           Float?
+  muac          Float?       // Mid-Upper Arm Circumference
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([patientId])
+}
+
+model NutritionAssessment {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedAt  DateTime @default(now())
+  // Screening tools
+  must        String?  // MUST score category: LOW/MEDIUM/HIGH
+  mustScore   Float?   // MUST numeric score 0-6
+  sga         String?  // SGA: A (well-nourished) / B (moderate) / C (severe)
+  nrs2002     String?  // NRS-2002: AT_RISK / NOT_AT_RISK
+  nrsScore    Float?   // NRS-2002 numeric score
+  mna         String?  // MNA (elderly): NORMAL / AT_RISK / MALNOURISHED
+  mnaScore    Float?   // MNA numeric score 0-14 (short form)
+  pps         String?  // Palliative Performance Scale 0-100
+  ecog        String?  // ECOG Performance Status 0-4
+  barthel     Int?     // Barthel Index 0-100
+  frailty     String?  // Frailty: ROBUST / PREFRAIL / FRAIL
+  frailtyScore Int?    // FRAIL scale 0-5
+  fallRisk    String?  // Fall risk: LOW / MODERATE / HIGH
+  // Physical measurements
+  handGrip    Float?   // Hand grip strength kg
+  calfCirc    Float?   // Calf circumference cm
+  // CareLivia inputs
+  activity    ActivityLevel @default(BED_REST)
+  stress      StressLevel   @default(NONE)
+  notes       String?
+  createdBy   String   @default("system")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+}
+
+model WeightRecord {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date          DateTime @default(now())
+  weight        Float
+  height        Float?
+  bmi           Float?
+  bmiCategory   String?
+  weightChange  Float?   // change from previous record
+  weightChangePct Float? // percentage change
+  note          String?
+  createdBy     String   @default("system")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([date])
+}
+
+// ---------------------------------------------------------------------
+// MEAL PLAN
+// ---------------------------------------------------------------------
+
+model MealPlan {
+  id            String         @id @default(cuid())
+  patientId     String
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  presetId      String?
+  preset        NutritionPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  date          DateTime       @default(now())
+  // Targets
+  targetCal     Float
+  targetProtein Float
+  targetFat     Float
+  targetCarb    Float
+  targetFiber   Float
+  targetSodium  Float
+  // Actuals
+  totalCal      Float          @default(0)
+  totalProtein  Float          @default(0)
+  totalFat      Float          @default(0)
+  totalCarb     Float          @default(0)
+  totalFiber    Float          @default(0)
+  totalSodium   Float          @default(0)
+  compliance    Float          @default(0) // % match to target
+  status        String         @default("DRAFT") // DRAFT / FINAL / SUPERSEDED
+  aiModel       String?
+  aiReasoning   String?
+  notes         String?
+  items         MealPlanItem[]
+  shoppingList  ShoppingList?
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([patientId])
+  @@index([presetId])
+  @@index([date])
+}
+
+model MealPlanItem {
+  id          String   @id @default(cuid())
+  mealPlanId  String
+  mealPlan    MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  slot        MealSlot
+  foodId      String
+  food        Food     @relation(fields: [foodId], references: [id])
+  amount      Float    // grams
+  // computed snapshot
+  cal         Float    @default(0)
+  protein     Float    @default(0)
+  fat         Float    @default(0)
+  carb        Float    @default(0)
+  fiber       Float    @default(0)
+  sodium      Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([mealPlanId])
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------
+// EXERCISE PLAN
+// ---------------------------------------------------------------------
+
+model ExercisePlan {
+  id              String         @id @default(cuid())
+  patientId       String
+  patient         Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date            DateTime       @default(now())
+  totalBurned     Float          @default(0) // kcal
+  targetBurned    Float          @default(0)
+  notes           String?
+  items           ExerciseItem[]
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([patientId])
+}
+
+model ExerciseItem {
+  id              String          @id @default(cuid())
+  exercisePlanId  String
+  exercisePlan    ExercisePlan    @relation(fields: [exercisePlanId], references: [id], onDelete: Cascade)
+  name            String
+  type            ExerciseType
+  intensity       ExerciseIntensity
+  duration        Int             // minutes
+  caloriesBurned  Float           // computed
+  met             Float           @default(3) // metabolic equivalent
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([exercisePlanId])
+}
+
+// ---------------------------------------------------------------------
+// FOOD RECORD (actual daily intake)
+// ---------------------------------------------------------------------
+
+model FoodRecord {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date        DateTime @default(now())
+  slot        MealSlot
+  foodId      String
+  food        Food     @relation(fields: [foodId], references: [id])
+  amount      Float    // grams actually consumed
+  consumed    Float    @default(100) // % consumed
+  cal         Float    @default(0)
+  protein     Float    @default(0)
+  fat         Float    @default(0)
+  carb        Float    @default(0)
+  fiber       Float    @default(0)
+  sodium      Float    @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([date])
+}
+
+// ---------------------------------------------------------------------
+// SHOPPING
+// ---------------------------------------------------------------------
+
+model ShoppingList {
+  id            String           @id @default(cuid())
+  patientId     String
+  patient       Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  mealPlanId    String?          @unique
+  mealPlan      MealPlan?        @relation(fields: [mealPlanId], references: [id])
+  period        ShoppingPeriod   @default(WEEKLY)
+  multiplier    Float            @default(7)
+  totalEstimate Float            @default(0)
+  currency      String           @default("IDR")
+  checkedCount  Int              @default(0)
+  items         ShoppingItem[]
+  deletedAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([patientId])
+}
+
+model ShoppingItem {
+  id              String        @id @default(cuid())
+  shoppingListId  String
+  shoppingList    ShoppingList  @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  foodId          String
+  food            Food          @relation(fields: [foodId], references: [id])
+  amount          Float         // grams total for period
+  unit            String        @default("g")
+  estPrice        Float         @default(0)
+  checked         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([shoppingListId])
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------
+// AUDIT LOG (application-level audit trail)
+// ---------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String   // e.g. "Patient", "MealPlan"
+  entityId  String
+  action    String   // CREATE / UPDATE / DELETE
+  actor     String   @default("system")
+  diff      String?  // JSON string of changes
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+// ---------------------------------------------------------------------
+// NUTRITION PRESET — Save 1/2/3 + unlimited patient-specific presets
+// Stores calorie + macro % + micros + clinical targets. Reusable to
+// generate alternative meal plans for different clinical scenarios.
+// ---------------------------------------------------------------------
+
+enum PresetGoal {
+  WEIGHT_LOSS
+  WEIGHT_MAINTAIN
+  WEIGHT_GAIN
+  HIGH_PROTEIN
+  LOW_CARB
+  LOW_FAT
+  CKD_DIET
+  DIABETES_DIET
+  HYPERTENSION_DIET
+  GENERAL
+}
+
+model NutritionPreset {
+  id          String      @id @default(cuid())
+  patientId   String?
+  patient     Patient?    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // Identity
+  name        String
+  description String      @default("")
+  color       String      @default("#10b981")
+  icon        String      @default("utensils")
+  isTemplate  Boolean      @default(false)
+  isFavorite  Boolean      @default(false)
+  // Energy
+  totalCal    Float
+  targetWeight Float?
+  bmr         Float?
+  tdee        Float?
+  // Macronutrient percentages (must sum ~100)
+  proteinPct  Float
+  carbPct     Float
+  fatPct      Float
+  // Grams (auto-computed from pct × cal)
+  proteinG    Float
+  carbG       Float
+  fatG        Float
+  // Micronutrient targets
+  fiberG      Float       @default(25)
+  sodiumMg    Float       @default(2300)
+  potassiumMg Float?
+  fluidMl     Float?
+  // Clinical
+  goal        PresetGoal  @default(GENERAL)
+  diagnoses   String      @default("") // comma separated DiagnosisType
+  // Metadata
+  version     Int         @default(1)
+  createdBy   String      @default("system")
+  updatedBy   String      @default("system")
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  history     NutritionPresetHistory[]
+  mealPlans   MealPlan[]
+
+  @@index([patientId])
+  @@index([isTemplate])
+}
+
+model NutritionPresetHistory {
+  id          String           @id @default(cuid())
+  presetId    String
+  preset      NutritionPreset  @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  // Snapshot of changed fields (JSON)
+  changes     String           // JSON: { field: { from, to } }
+  version     Int
+  actor       String           @default("system")
+  reason      String?
+  createdAt   DateTime         @default(now())
+
+  @@index([presetId])
+}
+
+// ---------------------------------------------------------------------
+// SAVED MENU — Save meal slot menus as reusable templates
+// Each saved menu contains a snapshot of foods + nutrition for one slot
+// ---------------------------------------------------------------------
+
+model SavedMenu {
+  id          String           @id @default(cuid())
+  patientId   String?
+  patient     Patient?         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name        String
+  category    String           // BREAKFAST / MORNING_SNACK / LUNCH / AFTERNOON_SNACK / DINNER / EVENING_SNACK
+  notes       String           @default("")
+  // Nutrition snapshot (per serving of the full menu)
+  totalCal    Float            @default(0)
+  totalProtein Float           @default(0)
+  totalFat    Float            @default(0)
+  totalCarb   Float            @default(0)
+  totalFiber  Float            @default(0)
+  totalSodium Float            @default(0)
+  totalPotassium Float         @default(0)
+  // Metadata
+  version     Int              @default(1)
+  lastUsedAt  DateTime?
+  useCount    Int              @default(0)
+  createdBy   String           @default("system")
+  deletedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  items       SavedMenuItem[]
+
+  @@index([patientId])
+  @@index([category])
+}
+
+model SavedMenuItem {
+  id          String     @id @default(cuid())
+  savedMenuId String
+  savedMenu   SavedMenu  @relation(fields: [savedMenuId], references: [id], onDelete: Cascade)
+  foodId      String
+  food        Food       @relation(fields: [foodId], references: [id])
+  amount      Float      // grams
+  // Nutrition snapshot (computed from food × amount)
+  cal         Float      @default(0)
+  protein     Float      @default(0)
+  fat         Float      @default(0)
+  carb        Float      @default(0)
+  fiber       Float      @default(0)
+  sodium      Float      @default(0)
+  potassium   Float      @default(0)
+  foodName    String     // snapshot for display without join
+  urt         String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([savedMenuId])
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------
+// COMPARISON HISTORY — Saved meal plan vs food record comparisons
+// ---------------------------------------------------------------------
+
+model ComparisonHistory {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  mealPlanId    String?
+  savedMenuName String?  // name of saved menu if compared
+  foodRecordDate DateTime // the date of food records compared
+  complianceScore Float  @default(0) // 0-100
+  // Comparison results JSON: { nutrients: [...], foods: { matched, replaced, removed, added }, insights: [...] }
+  results       String   // JSON string
+  aiInsight     String?  // AI-generated insight text
+  createdAt     DateTime @default(now())
+
+  @@index([patientId])
+  @@index([foodRecordDate])
+}
+
+// ---------------------------------------------------------------------
+// SAVED MEAL PLAN — Save complete daily meal plans as reusable templates
+// Parent-child structure: 1 SavedMealPlan contains items across all 6 slots
+// ---------------------------------------------------------------------
+
+model SavedMealPlan {
+  id          String   @id @default(cuid())
+  patientId   String?
+  patient     Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  notes       String   @default("")
+  // Nutrition snapshot (daily total)
+  totalCal    Float    @default(0)
+  totalProtein Float   @default(0)
+  totalFat    Float    @default(0)
+  totalCarb   Float    @default(0)
+  totalFiber  Float    @default(0)
+  totalSodium Float    @default(0)
+  totalPotassium Float @default(0)
+  // Metadata
+  version     Int      @default(1)
+  lastUsedAt  DateTime?
+  useCount    Int      @default(0)
+  createdBy   String   @default("system")
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       SavedMealPlanItem[]
+
+  @@index([patientId])
+}
+
+model SavedMealPlanItem {
+  id              String   @id @default(cuid())
+  savedMealPlanId String
+  savedMealPlan   SavedMealPlan @relation(fields: [savedMealPlanId], references: [id], onDelete: Cascade)
+  slot            String   // BREAKFAST / MORNING_SNACK / LUNCH / AFTERNOON_SNACK / DINNER / EVENING_SNACK
+  foodId          String
+  food            Food     @relation(fields: [foodId], references: [id])
+  amount          Float    // grams
+  // Nutrition snapshot
+  cal             Float    @default(0)
+  protein         Float    @default(0)
+  fat             Float    @default(0)
+  carb            Float    @default(0)
+  fiber           Float    @default(0)
+  sodium          Float    @default(0)
+  potassium       Float    @default(0)
+  foodName        String   // snapshot for display
+  urt             String?
+  createdAt       DateTime @default(now())
+
+  @@index([savedMealPlanId])
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------
+// FOOD SUBCATEGORY
+// ---------------------------------------------------------------------
+
+model FoodSubcategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String
+  categoryId  String
+  category    FoodCategory @relation(fields: [categoryId], references: [id])
+  foods       Food[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+// ---------------------------------------------------------------------
+// FOOD PRICE HISTORY — track all price changes over time
+// ---------------------------------------------------------------------
+
+model FoodPriceHistory {
+  id          String   @id @default(cuid())
+  foodId      String
+  food        Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  price       Float    // IDR per 100g at time of recording
+  previousPrice Float?
+  unit        String   @default("g")
+  location    String?  // Provinsi/Kabupaten
+  source      String?  // Pasar/Supermarket/Supplier
+  notes       String?
+  actor       String   @default("system")
+  createdAt   DateTime @default(now())
+
+  @@index([foodId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------
+// FOOD CHANGE LOG — audit trail for all food data changes
+// ---------------------------------------------------------------------
+
+model FoodChangeLog {
+  id          String   @id @default(cuid())
+  foodId      String
+  food        Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  action      String   // CREATE / UPDATE / DELETE
+  changes     String   // JSON: { field: { from, to } }
+  actor       String   @default("system")
+  createdAt   DateTime @default(now())
+
+  @@index([foodId])
+  @@index([createdAt])
+}

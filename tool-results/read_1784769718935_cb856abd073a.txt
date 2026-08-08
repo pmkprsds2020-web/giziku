@@ -1,0 +1,1342 @@
+     1→     1→// =====================================================================
+     2→     2→// CareLivia — Supabase Data Layer (PRIMARY database)
+     3→     3→// ALL CRUD operations use supabase.from() — NO Prisma, NO SQLite.
+     4→     4→//
+     5→     5→// This module provides typed data access functions that map between
+     6→     6→// camelCase (frontend/Prisma convention) and snake_case (Supabase PostgreSQL).
+     7→     7→//
+     8→     8→// Authentication:
+     9→     9→//   - Server-side client reads user session from cookies
+    10→    10→//   - Public reads (foods, categories) work with anon role
+    11→    11→//   - Writes and patient data require authenticated session
+    12→    12→//   - If no session, writes return { error: "Authentication required" }
+    13→    13→// =====================================================================
+    14→    14→
+    15→    15→import { createClient } from "@/lib/supabase/server";
+    16→    16→import type { SupabaseClient } from "@supabase/supabase-js";
+    17→    17→
+    18→    18→// ---------------------------------------------------------------------
+    19→    19→// Type mappings: camelCase ↔ snake_case
+    20→    20→// ---------------------------------------------------------------------
+    21→    21→
+    22→    22→// Food: Prisma camelCase → Supabase snake_case
+    23→    23→export function foodToSupabase(f: any): any {
+    24→    24→  return {
+    25→    25→    id: f.id,
+    26→    26→    name: f.name,
+    27→    27→    english_name: f.englishName ?? f.english_name ?? null,
+    28→    28→    alias: f.alias ?? null,
+    29→    29→    code: f.code ?? null,
+    30→    30→    category_id: f.categoryId ?? f.category_id,
+    31→    31→    subcategory_id: f.subcategoryId ?? f.subcategory_id ?? null,
+    32→    32→    source: (f.source ?? "TKPI").toUpperCase(),
+    33→    33→    description: f.description ?? null,
+    34→    34→    energy: f.energy,
+    35→    35→    protein: f.protein,
+    36→    36→    fat: f.fat,
+    37→    37→    carb: f.carb,
+    38→    38→    fiber: f.fiber ?? 0,
+    39→    39→    water: f.water ?? 0,
+    40→    40→    ash: f.ash ?? 0,
+    41→    41→    sodium: f.sodium ?? 0,
+    42→    42→    potassium: f.potassium ?? 0,
+    43→    43→    calcium: f.calcium ?? 0,
+    44→    44→    magnesium: f.magnesium ?? 0,
+    45→    45→    iron: f.iron ?? 0,
+    46→    46→    phosphorus: f.phosphorus ?? 0,
+    47→    47→    zinc: f.zinc ?? 0,
+    48→    48→    vit_a: f.vitA ?? f.vit_a ?? 0,
+    49→    49→    vit_b1: f.vitB1 ?? f.vit_b1 ?? 0,
+    50→    50→    vit_b2: f.vitB2 ?? f.vit_b2 ?? 0,
+    51→    51→    vit_b6: f.vitB6 ?? f.vit_b6 ?? 0,
+    52→    52→    vit_b12: f.vitB12 ?? f.vit_b12 ?? 0,
+    53→    53→    vit_c: f.vitC ?? f.vit_c ?? 0,
+    54→    54→    vit_d: f.vitD ?? f.vit_d ?? 0,
+    55→    55→    vit_e: f.vitE ?? f.vit_e ?? 0,
+    56→    56→    vit_k: f.vitK ?? f.vit_k ?? 0,
+    57→    57→    cholesterol: f.cholesterol ?? 0,
+    58→    58→    gi: f.gi ?? 0,
+    59→    59→    urt: f.urt ?? null,
+    60→    60→    urt_gram: f.urtGram ?? f.urt_gram ?? null,
+    61→    61→    bdd: f.bdd ?? 100,
+    62→    62→    price: f.price ?? 0,
+    63→    63→    price_unit: f.priceUnit ?? f.price_unit ?? "g",
+    64→    64→    price_location: f.priceLocation ?? f.price_location ?? null,
+    65→    65→    price_source: f.priceSource ?? f.price_source ?? null,
+    66→    66→    price_updated_at: f.priceUpdatedAt ?? f.price_updated_at ?? null,
+    67→    67→    price_is_estimate: f.priceIsEstimate ?? f.price_is_estimate ?? false,
+    68→    68→    unit: f.unit ?? "g",
+    69→    69→    image_url: f.imageUrl ?? f.image_url ?? null,
+    70→    70→    tags: f.tags ?? "",
+    71→    71→    approved: f.approved ?? true,
+    72→    72→    version: f.version ?? 1,
+    73→    73→    deleted_at: f.deletedAt ?? f.deleted_at ?? null,
+    74→    74→  };
+    75→    75→}
+    76→    76→
+    77→    77→export function foodFromSupabase(row: any, category?: any): any {
+    78→    78→  if (!row) return null;
+    79→    79→  return {
+    80→    80→    id: row.id,
+    81→    81→    name: row.name,
+    82→    82→    englishName: row.english_name,
+    83→    83→    alias: row.alias,
+    84→    84→    code: row.code,
+    85→    85→    categoryId: row.category_id,
+    86→    86→    subcategoryId: row.subcategory_id,
+    87→    87→    source: row.source,
+    88→    88→    description: row.description,
+    89→    89→    energy: row.energy,
+    90→    90→    protein: row.protein,
+    91→    91→    fat: row.fat,
+    92→    92→    carb: row.carb,
+    93→    93→    fiber: row.fiber,
+    94→    94→    water: row.water,
+    95→    95→    ash: row.ash,
+    96→    96→    sodium: row.sodium,
+    97→    97→    potassium: row.potassium,
+    98→    98→    calcium: row.calcium,
+    99→    99→    magnesium: row.magnesium,
+   100→   100→    iron: row.iron,
+   101→   101→    phosphorus: row.phosphorus,
+   102→   102→    zinc: row.zinc,
+   103→   103→    vitA: row.vit_a,
+   104→   104→    vitB1: row.vit_b1,
+   105→   105→    vitB2: row.vit_b2,
+   106→   106→    vitB6: row.vit_b6,
+   107→   107→    vitB12: row.vit_b12,
+   108→   108→    vitC: row.vit_c,
+   109→   109→    vitD: row.vit_d,
+   110→   110→    vitE: row.vit_e,
+   111→   111→    vitK: row.vit_k,
+   112→   112→    cholesterol: row.cholesterol,
+   113→   113→    gi: row.gi,
+   114→   114→    urt: row.urt,
+   115→   115→    urtGram: row.urt_gram,
+   116→   116→    bdd: row.bdd,
+   117→   117→    price: row.price,
+   118→   118→    priceUnit: row.price_unit,
+   119→   119→    priceLocation: row.price_location,
+   120→   120→    priceSource: row.price_source,
+   121→   121→    priceUpdatedAt: row.price_updated_at,
+   122→   122→    priceIsEstimate: row.price_is_estimate,
+   123→   123→    unit: row.unit,
+   124→   124→    imageUrl: row.image_url,
+   125→   125→    tags: row.tags,
+   126→   126→    approved: row.approved,
+   127→   127→    version: row.version,
+   128→   128→    deletedAt: row.deleted_at,
+   129→   129→    createdAt: row.created_at,
+   130→   130→    updatedAt: row.updated_at,
+   131→   131→    category: category ? { id: category.id, name: category.name, slug: category.slug, icon: category.icon } : undefined,
+   132→   132→  };
+   133→   133→}
+   134→   134→
+   135→   135→// Patient mapping
+   136→   136→export function patientToSupabase(p: any): any {
+   137→   137→  return {
+   138→   138→    id: p.id,
+   139→   139→    mrn: p.mrn,
+   140→   140→    name: p.name,
+   141→   141→    gender: (p.gender ?? "MALE").toUpperCase(),
+   142→   142→    birth_date: p.birthDate ?? p.birth_date,
+   143→   143→    phone: p.phone ?? "",
+   144→   144→    address: p.address ?? "",
+   145→   145→    religion: (p.religion ?? "ISLAM").toUpperCase(),
+   146→   146→    blood_type: (p.bloodType ?? p.blood_type ?? "UNKNOWN").toUpperCase(),
+   147→   147→    allergy: p.allergy ?? "",
+   148→   148→    height: p.height,
+   149→   149→    weight: p.weight,
+   150→   150→    is_pregnant: p.isPregnant ?? p.is_pregnant ?? false,
+   151→   151→    pregnancy_trimester: p.pregnancyTrimester ?? p.pregnancy_trimester ?? 0,
+   152→   152→    is_lactating: p.isLactating ?? p.is_lactating ?? false,
+   153→   153→    lactation_month: p.lactationMonth ?? p.lactation_month ?? 0,
+   154→   154→    notes: p.notes,
+   155→   155→    deleted_at: p.deletedAt ?? p.deleted_at ?? null,
+   156→   156→  };
+   157→   157→}
+   158→   158→
+   159→   159→export function patientFromSupabase(row: any): any {
+   160→   160→  if (!row) return null;
+   161→   161→  return {
+   162→   162→    id: row.id,
+   163→   163→    mrn: row.mrn,
+   164→   164→    name: row.name,
+   165→   165→    gender: row.gender,
+   166→   166→    birthDate: row.birth_date,
+   167→   167→    phone: row.phone,
+   168→   168→    address: row.address,
+   169→   169→    religion: row.religion,
+   170→   170→    bloodType: row.blood_type,
+   171→   171→    allergy: row.allergy,
+   172→   172→    height: row.height,
+   173→   173→    weight: row.weight,
+   174→   174→    isPregnant: row.is_pregnant,
+   175→   175→    pregnancyTrimester: row.pregnancy_trimester,
+   176→   176→    isLactating: row.is_lactating,
+   177→   177→    lactationMonth: row.lactation_month,
+   178→   178→    notes: row.notes,
+   179→   179→    deletedAt: row.deleted_at,
+   180→   180→    createdAt: row.created_at,
+   181→   181→    updatedAt: row.updated_at,
+   182→   182→  };
+   183→   183→}
+   184→   184→
+   185→   185→// Meal plan mapping
+   186→   186→export function mealPlanToSupabase(m: any): any {
+   187→   187→  return {
+   188→   188→    id: m.id,
+   189→   189→    patient_id: m.patientId ?? m.patient_id,
+   190→   190→    preset_id: m.presetId ?? m.preset_id ?? null,
+   191→   191→    date: m.date ?? new Date().toISOString(),
+   192→   192→    target_cal: m.targetCal ?? m.target_cal ?? 0,
+   193→   193→    target_protein: m.targetProtein ?? m.target_protein ?? 0,
+   194→   194→    target_fat: m.targetFat ?? m.target_fat ?? 0,
+   195→   195→    target_carb: m.targetCarb ?? m.target_carb ?? 0,
+   196→   196→    target_fiber: m.targetFiber ?? m.target_fiber ?? 0,
+   197→   197→    target_sodium: m.targetSodium ?? m.target_sodium ?? 0,
+   198→   198→    total_cal: m.totalCal ?? m.total_cal ?? 0,
+   199→   199→    total_protein: m.totalProtein ?? m.total_protein ?? 0,
+   200→   200→    total_fat: m.totalFat ?? m.total_fat ?? 0,
+   201→   201→    total_carb: m.totalCarb ?? m.total_carb ?? 0,
+   202→   202→    total_fiber: m.totalFiber ?? m.total_fiber ?? 0,
+   203→   203→    total_sodium: m.totalSodium ?? m.total_sodium ?? 0,
+   204→   204→    compliance: m.compliance ?? 0,
+   205→   205→    status: m.status ?? "DRAFT",
+   206→   206→    ai_model: m.aiModel ?? m.ai_model ?? null,
+   207→   207→    ai_reasoning: m.aiReasoning ?? m.ai_reasoning ?? null,
+   208→   208→    notes: m.notes,
+   209→   209→    deleted_at: m.deletedAt ?? m.deleted_at ?? null,
+   210→   210→  };
+   211→   211→}
+   212→   212→
+   213→   213→export function mealPlanFromSupabase(row: any, items?: any[], preset?: any, patient?: any): any {
+   214→   214→  if (!row) return null;
+   215→   215→  return {
+   216→   216→    id: row.id,
+   217→   217→    patientId: row.patient_id,
+   218→   218→    presetId: row.preset_id,
+   219→   219→    date: row.date,
+   220→   220→    targetCal: row.target_cal,
+   221→   221→    targetProtein: row.target_protein,
+   222→   222→    targetFat: row.target_fat,
+   223→   223→    targetCarb: row.target_carb,
+   224→   224→    targetFiber: row.target_fiber,
+   225→   225→    targetSodium: row.target_sodium,
+   226→   226→    totalCal: row.total_cal,
+   227→   227→    totalProtein: row.total_protein,
+   228→   228→    totalFat: row.total_fat,
+   229→   229→    totalCarb: row.total_carb,
+   230→   230→    totalFiber: row.total_fiber,
+   231→   231→    totalSodium: row.total_sodium,
+   232→   232→    compliance: row.compliance,
+   233→   233→    status: row.status,
+   234→   234→    aiModel: row.ai_model,
+   235→   235→    aiReasoning: row.ai_reasoning,
+   236→   236→    notes: row.notes,
+   237→   237→    deletedAt: row.deleted_at,
+   238→   238→    createdAt: row.created_at,
+   239→   239→    updatedAt: row.updated_at,
+   240→   240→    items: items ?? [],
+   241→   241→    preset: preset ?? null,
+   242→   242→    patient: patient ?? null,
+   243→   243→  };
+   244→   244→}
+   245→   245→
+   246→   246→// Meal plan item mapping
+   247→   247→export function mealItemToSupabase(i: any): any {
+   248→   248→  return {
+   249→   249→    id: i.id,
+   250→   250→    meal_plan_id: i.mealPlanId ?? i.meal_plan_id,
+   251→   251→    slot: (i.slot ?? "LUNCH").toUpperCase(),
+   252→   252→    food_id: i.foodId ?? i.food_id,
+   253→   253→    amount: i.amount,
+   254→   254→    cal: i.cal ?? 0,
+   255→   255→    protein: i.protein ?? 0,
+   256→   256→    fat: i.fat ?? 0,
+   257→   257→    carb: i.carb ?? 0,
+   258→   258→    fiber: i.fiber ?? 0,
+   259→   259→    sodium: i.sodium ?? 0,
+   260→   260→  };
+   261→   261→}
+   262→   262→
+   263→   263→export function mealItemFromSupabase(row: any, food?: any): any {
+   264→   264→  if (!row) return null;
+   265→   265→  return {
+   266→   266→    id: row.id,
+   267→   267→    mealPlanId: row.meal_plan_id,
+   268→   268→    slot: row.slot,
+   269→   269→    foodId: row.food_id,
+   270→   270→    amount: row.amount,
+   271→   271→    cal: row.cal,
+   272→   272→    protein: row.protein,
+   273→   273→    fat: row.fat,
+   274→   274→    carb: row.carb,
+   275→   275→    fiber: row.fiber,
+   276→   276→    sodium: row.sodium,
+   277→   277→    createdAt: row.created_at,
+   278→   278→    updatedAt: row.updated_at,
+   279→   279→    food: food ?? null,
+   280→   280→  };
+   281→   281→}
+   282→   282→
+   283→   283→// Weight record mapping
+   284→   284→export function weightRecordFromSupabase(row: any): any {
+   285→   285→  if (!row) return null;
+   286→   286→  return {
+   287→   287→    id: row.id,
+   288→   288→    patientId: row.patient_id,
+   289→   289→    date: row.date,
+   290→   290→    weight: row.weight,
+   291→   291→    height: row.height,
+   292→   292→    bmi: row.bmi,
+   293→   293→    bmiCategory: row.bmi_category,
+   294→   294→    weightChange: row.weight_change,
+   295→   295→    weightChangePct: row.weight_change_pct,
+   296→   296→    note: row.note,
+   297→   297→    createdBy: row.created_by,
+   298→   298→    createdAt: row.created_at,
+   299→   299→    updatedAt: row.updated_at,
+   300→   300→  };
+   301→   301→}
+   302→   302→
+   303→   303→// Nutrition assessment mapping
+   304→   304→export function assessmentFromSupabase(row: any): any {
+   305→   305→  if (!row) return null;
+   306→   306→  return {
+   307→   307→    id: row.id,
+   308→   308→    patientId: row.patient_id,
+   309→   309→    recordedAt: row.recorded_at,
+   310→   310→    must: row.must,
+   311→   311→    mustScore: row.must_score,
+   312→   312→    sga: row.sga,
+   313→   313→    nrs2002: row.nrs2002,
+   314→   314→    nrsScore: row.nrs_score,
+   315→   315→    mna: row.mna,
+   316→   316→    mnaScore: row.mna_score,
+   317→   317→    pps: row.pps,
+   318→   318→    ecog: row.ecog,
+   319→   319→    barthel: row.barthel,
+   320→   320→    frailty: row.frailty,
+   321→   321→    frailtyScore: row.frailty_score,
+   322→   322→    fallRisk: row.fall_risk,
+   323→   323→    handGrip: row.hand_grip,
+   324→   324→    calfCirc: row.calf_circ,
+   325→   325→    activity: row.activity,
+   326→   326→    stress: row.stress,
+   327→   327→    notes: row.notes,
+   328→   328→    createdBy: row.created_by,
+   329→   329→    createdAt: row.created_at,
+   330→   330→    updatedAt: row.updated_at,
+   331→   331→  };
+   332→   332→}
+   333→   333→
+   334→   334→// Food record mapping
+   335→   335→export function foodRecordFromSupabase(row: any, food?: any): any {
+   336→   336→  if (!row) return null;
+   337→   337→  return {
+   338→   338→    id: row.id,
+   339→   339→    patientId: row.patient_id,
+   340→   340→    date: row.date,
+   341→   341→    slot: row.slot,
+   342→   342→    foodId: row.food_id,
+   343→   343→    amount: row.amount,
+   344→   344→    consumed: row.consumed,
+   345→   345→    cal: row.cal,
+   346→   346→    protein: row.protein,
+   347→   347→    fat: row.fat,
+   348→   348→    carb: row.carb,
+   349→   349→    fiber: row.fiber,
+   350→   350→    sodium: row.sodium,
+   351→   351→    notes: row.notes,
+   352→   352→    createdAt: row.created_at,
+   353→   353→    updatedAt: row.updated_at,
+   354→   354→    food: food ?? null,
+   355→   355→  };
+   356→   356→}
+   357→   357→
+   358→   358→// Preset mapping
+   359→   359→export function presetFromSupabase(row: any): any {
+   360→   360→  if (!row) return null;
+   361→   361→  return {
+   362→   362→    id: row.id,
+   363→   363→    patientId: row.patient_id,
+   364→   364→    name: row.name,
+   365→   365→    description: row.description,
+   366→   366→    color: row.color,
+   367→   367→    icon: row.icon,
+   368→   368→    isTemplate: row.is_template,
+   369→   369→    isFavorite: row.is_favorite,
+   370→   370→    totalCal: row.total_cal,
+   371→   371→    targetWeight: row.target_weight,
+   372→   372→    bmr: row.bmr,
+   373→   373→    tdee: row.tdee,
+   374→   374→    proteinPct: row.protein_pct,
+   375→   375→    carbPct: row.carb_pct,
+   376→   376→    fatPct: row.fat_pct,
+   377→   377→    proteinG: row.protein_g,
+   378→   378→    carbG: row.carb_g,
+   379→   379→    fatG: row.fat_g,
+   380→   380→    fiberG: row.fiber_g,
+   381→   381→    sodiumMg: row.sodium_mg,
+   382→   382→    potassiumMg: row.potassium_mg,
+   383→   383→    fluidMl: row.fluid_ml,
+   384→   384→    goal: row.goal,
+   385→   385→    diagnoses: row.diagnoses,
+   386→   386→    version: row.version,
+   387→   387→    createdBy: row.created_by,
+   388→   388→    updatedBy: row.updated_by,
+   389→   389→    deletedAt: row.deleted_at,
+   390→   390→    createdAt: row.created_at,
+   391→   391→    updatedAt: row.updated_at,
+   392→   392→  };
+   393→   393→}
+   394→   394→
+   395→   395→// ---------------------------------------------------------------------
+   396→   396→// Helper: Get authenticated server client + session
+   397→   397→// ---------------------------------------------------------------------
+   398→   398→export async function getServerClient(): Promise<{
+   399→   399→  client: SupabaseClient;
+   400→   400→  session: { user: any } | null;
+   401→   401→}> {
+   402→   402→  const client = await createClient();
+   403→   403→  const { data: { session } } = await client.auth.getSession();
+   404→   404→  return {
+   405→   405→    client,
+   406→   406→    session: session ? { user: session.user } : null,
+   407→   407→  };
+   408→   408→}
+   409→   409→
+   410→   410→// ---------------------------------------------------------------------
+   411→   411→// FOODS — Public reads (anon OK), writes require auth
+   412→   412→// ---------------------------------------------------------------------
+   413→   413→export async function supabaseListFoods(params?: {
+   414→   414→  search?: string;
+   415→   415→  categorySlug?: string;
+   416→   416→  limit?: number;
+   417→   417→  offset?: number;
+   418→   418→}): Promise<{ data: any[]; total: number }> {
+   419→   419→  const { client } = await getServerClient();
+   420→   420→  const limit = params?.limit ?? 100;
+   421→   421→  const offset = params?.offset ?? 0;
+   422→   422→
+   423→   423→  let query = client
+   424→   424→    .from("foods")
+   425→   425→    .select("*, food_categories!foods_category_id_fkey(*)", { count: "exact" })
+   426→   426→    .is("deleted_at", null)
+   427→   427→    .eq("approved", true)
+   428→   428→    .range(offset, offset + limit - 1)
+   429→   429→    .order("name");
+   430→   430→
+   431→   431→  if (params?.search) {
+   432→   432→    query = query.or(`name.ilike.%${params.search}%,english_name.ilike.%${params.search}%,tags.ilike.%${params.search}%`);
+   433→   433→  }
+   434→   434→
+   435→   435→  // Category filter requires subquery — skip for now, filter in memory
+   436→   436→  const { data, error, count } = await query;
+   437→   437→
+   438→   438→  if (error) {
+   439→   439→    console.error("[Supabase] listFoods error:", error);
+   440→   440→    return { data: [], total: 0 };
+   441→   441→  }
+   442→   442→
+   443→   443→  let rows = (data || []).map((row: any) =>
+   444→   444→    foodFromSupabase(row, row.food_categories),
+   445→   445→  );
+   446→   446→
+   447→   447→  // In-memory category filter
+   448→   448→  if (params?.categorySlug && params.categorySlug !== "all") {
+   449→   449→    rows = rows.filter((f: any) => f.category?.slug === params.categorySlug);
+   450→   450→  }
+   451→   451→
+   452→   452→  return { data: rows, total: count ?? rows.length };
+   453→   453→}
+   454→   454→
+   455→   455→export async function supabaseGetFood(id: string): Promise<any | null> {
+   456→   456→  const { client } = await getServerClient();
+   457→   457→  const { data, error } = await client
+   458→   458→    .from("foods")
+   459→   459→    .select("*, food_categories!foods_category_id_fkey(*)")
+   460→   460→    .eq("id", id)
+   461→   461→    .single();
+   462→   462→
+   463→   463→  if (error) {
+   464→   464→    console.error("[Supabase] getFood error:", error);
+   465→   465→    return null;
+   466→   466→  }
+   467→   467→
+   468→   468→  return foodFromSupabase(data, data.food_categories);
+   469→   469→}
+   470→   470→
+   471→   471→export async function supabaseUpsertFood(food: any): Promise<{ data: any | null; error: string | null }> {
+   472→   472→  const { client, session } = await getServerClient();
+   473→   473→  if (!session) return { data: null, error: "Authentication required. Please log in." };
+   474→   474→
+   475→   475→  const payload = foodToSupabase(food);
+   476→   476→  const { data, error } = await client
+   477→   477→    .from("foods")
+   478→   478→    .upsert(payload)
+   479→   479→    .select("*, food_categories!foods_category_id_fkey(*)")
+   480→   480→    .single();
+   481→   481→
+   482→   482→  if (error) {
+   483→   483→    console.error("[Supabase] upsertFood error:", error);
+   484→   484→    return { data: null, error: error.message };
+   485→   485→  }
+   486→   486→
+   487→   487→  return { data: foodFromSupabase(data, data.food_categories), error: null };
+   488→   488→}
+   489→   489→
+   490→   490→// ---------------------------------------------------------------------
+   491→   491→// FOOD CATEGORIES — Public reads
+   492→   492→// ---------------------------------------------------------------------
+   493→   493→export async function supabaseListCategories(): Promise<any[]> {
+   494→   494→  const { client } = await getServerClient();
+   495→   495→  const { data, error } = await client
+   496→   496→    .from("food_categories")
+   497→   497→    .select("*")
+   498→   498→    .order("name");
+   499→   499→
+   500→   500→  if (error) {
+   501→   501→    console.error("[Supabase] listCategories error:", error);
+   502→   502→    return [];
+   503→   503→  }
+   504→   504→
+   505→   505→  return (data || []).map((row: any) => ({
+   506→   506→    id: row.id,
+   507→   507→    name: row.name,
+   508→   508→    slug: row.slug,
+   509→   509→    icon: row.icon,
+   510→   510→    createdAt: row.created_at,
+   511→   511→    updatedAt: row.updated_at,
+   512→   512→  }));
+   513→   513→}
+   514→   514→
+   515→   515→export async function supabaseUpsertCategory(cat: any): Promise<{ data: any | null; error: string | null }> {
+   516→   516→  const { client, session } = await getServerClient();
+   517→   517→  if (!session) return { data: null, error: "Authentication required." };
+   518→   518→
+   519→   519→  const { data, error } = await client
+   520→   520→    .from("food_categories")
+   521→   521→    .upsert({ id: cat.id, name: cat.name, slug: cat.slug, icon: cat.icon })
+   522→   522→    .select()
+   523→   523→    .single();
+   524→   524→
+   525→   525→  if (error) return { data: null, error: error.message };
+   526→   526→  return { data, error: null };
+   527→   527→}
+   528→   528→
+   529→   529→// ---------------------------------------------------------------------
+   530→   530→// PATIENTS — Require authentication
+   531→   531→// ---------------------------------------------------------------------
+   532→   532→export async function supabaseListPatients(): Promise<any[]> {
+   533→   533→  const { client } = await getServerClient();
+   534→   534→  const { data, error } = await client
+   535→   535→    .from("patients")
+   536→   536→    .select("*, diagnoses(*)")
+   537→   537→    .is("deleted_at", null)
+   538→   538→    .order("created_at", { ascending: false });
+   539→   539→
+   540→   540→  if (error) {
+   541→   541→    console.error("[Supabase] listPatients error:", error);
+   542→   542→    return [];
+   543→   543→  }
+   544→   544→
+   545→   545→  return (data || []).map((row: any) => {
+   546→   546→    const p = patientFromSupabase(row);
+   547→   547→    p.diagnoses = (row.diagnoses || []).map((d: any) => ({
+   548→   548→      id: d.id,
+   549→   549→      patientId: d.patient_id,
+   550→   550→      type: d.type,
+   551→   551→      icd: d.icd,
+   552→   552→      severity: d.severity,
+   553→   553→      notes: d.notes,
+   554→   554→      active: d.active,
+   555→   555→      createdAt: d.created_at,
+   556→   556→      updatedAt: d.updated_at,
+   557→   557→    }));
+   558→   558→    return p;
+   559→   559→  });
+   560→   560→}
+   561→   561→
+   562→   562→export async function supabaseGetPatient(id: string): Promise<any | null> {
+   563→   563→  const { client } = await getServerClient();
+   564→   564→  const { data, error } = await client
+   565→   565→    .from("patients")
+   566→   566→    .select("*, diagnoses(*), nutrition_assessments(*)")
+   567→   567→    .eq("id", id)
+   568→   568→    .single();
+   569→   569→
+   570→   570→  if (error) {
+   571→   571→    console.error("[Supabase] getPatient error:", error);
+   572→   572→    return null;
+   573→   573→  }
+   574→   574→
+   575→   575→  const p = patientFromSupabase(data);
+   576→   576→  p.diagnoses = (data.diagnoses || []).map((d: any) => ({
+   577→   577→    id: d.id,
+   578→   578→    patientId: d.patient_id,
+   579→   579→    type: d.type,
+   580→   580→    icd: d.icd,
+   581→   581→    severity: d.severity,
+   582→   582→    notes: d.notes,
+   583→   583→    active: d.active,
+   584→   584→    createdAt: d.created_at,
+   585→   585→    updatedAt: d.updated_at,
+   586→   586→  }));
+   587→   587→  p.assessments = (data.nutrition_assessments || []).map(assessmentFromSupabase);
+   588→   588→  return p;
+   589→   589→}
+   590→   590→
+   591→   591→export async function supabaseCreatePatient(p: any): Promise<{ data: any | null; error: string | null }> {
+   592→   592→  const { client, session } = await getServerClient();
+   593→   593→  if (!session) return { data: null, error: "Authentication required. Please log in." };
+   594→   594→
+   595→   595→  const payload = patientToSupabase(p);
+   596→   596→  delete payload.id; // Let Supabase generate UUID
+   597→   597→
+   598→   598→  const { data, error } = await client
+   599→   599→    .from("patients")
+   600→   600→    .insert(payload)
+   601→   601→    .select()
+   602→   602→    .single();
+   603→   603→
+   604→   604→  if (error) {
+   605→   605→    console.error("[Supabase] createPatient error:", error);
+   606→   606→    return { data: null, error: error.message };
+   607→   607→  }
+   608→   608→
+   609→   609→  return { data: patientFromSupabase(data), error: null };
+   610→   610→}
+   611→   611→
+   612→   612→export async function supabaseUpdatePatient(id: string, updates: any): Promise<{ data: any | null; error: string | null }> {
+   613→   613→  const { client, session } = await getServerClient();
+   614→   614→  if (!session) return { data: null, error: "Authentication required." };
+   615→   615→
+   616→   616→  const payload = patientToSupabase(updates);
+   617→   617→  delete payload.id;
+   618→   618→
+   619→   619→  const { data, error } = await client
+   620→   620→    .from("patients")
+   621→   621→    .update(payload)
+   622→   622→    .eq("id", id)
+   623→   623→    .select()
+   624→   624→    .single();
+   625→   625→
+   626→   626→  if (error) return { data: null, error: error.message };
+   627→   627→  return { data: patientFromSupabase(data), error: null };
+   628→   628→}
+   629→   629→
+   630→   630→export async function supabaseSoftDeletePatient(id: string): Promise<{ error: string | null }> {
+   631→   631→  const { client, session } = await getServerClient();
+   632→   632→  if (!session) return { error: "Authentication required." };
+   633→   633→
+   634→   634→  const { error } = await client
+   635→   635→    .from("patients")
+   636→   636→    .update({ deleted_at: new Date().toISOString() })
+   637→   637→    .eq("id", id);
+   638→   638→
+   639→   639→  return { error: error?.message ?? null };
+   640→   640→}
+   641→   641→
+   642→   642→// ---------------------------------------------------------------------
+   643→   643→// MEAL PLANS — Require authentication for writes
+   644→   644→// ---------------------------------------------------------------------
+   645→   645→export async function supabaseListMealPlans(patientId?: string): Promise<any[]> {
+   646→   646→  const { client } = await getServerClient();
+   647→   647→  let query = client
+   648→   648→    .from("meal_plans")
+   649→   649→    .select("*, patients!meal_plans_patient_id_fkey(*, diagnoses(*)), nutrition_presets!meal_plans_preset_id_fkey(*), meal_plan_items(*, foods!meal_plan_items_food_id_fkey(*, food_categories!foods_category_id_fkey(*)))")
+   650→   650→    .is("deleted_at", null)
+   651→   651→    .order("date", { ascending: false })
+   652→   652→    .limit(20);
+   653→   653→
+   654→   654→  if (patientId) {
+   655→   655→    query = query.eq("patient_id", patientId);
+   656→   656→  }
+   657→   657→
+   658→   658→  const { data, error } = await query;
+   659→   659→
+   660→   660→  if (error) {
+   661→   661→    console.error("[Supabase] listMealPlans error:", error);
+   662→   662→    return [];
+   663→   663→  }
+   664→   664→
+   665→   665→  return (data || []).map((row: any) => {
+   666→   666→    const items = (row.meal_plan_items || []).map((item: any) =>
+   667→   667→      mealItemFromSupabase(item, item.foods ? foodFromSupabase(item.foods, item.foods.food_categories) : null),
+   668→   668→    );
+   669→   669→    return mealPlanFromSupabase(
+   670→   670→      row,
+   671→   671→      items,
+   672→   672→      row.nutrition_presets ? presetFromSupabase(row.nutrition_presets) : null,
+   673→   673→      row.patients ? patientFromSupabase(row.patients) : null,
+   674→   674→    );
+   675→   675→  });
+   676→   676→}
+   677→   677→
+   678→   678→export async function supabaseCreateMealPlan(plan: any, items: any[]): Promise<{ data: any | null; error: string | null }> {
+   679→   679→  const { client, session } = await getServerClient();
+   680→   680→  if (!session) return { data: null, error: "Authentication required. Please log in to save meal plans." };
+   681→   681→
+   682→   682→  const planPayload = mealPlanToSupabase(plan);
+   683→   683→  delete planPayload.id;
+   684→   684→
+   685→   685→  const { data: planData, error: planError } = await client
+   686→   686→    .from("meal_plans")
+   687→   687→    .insert(planPayload)
+   688→   688→    .select()
+   689→   689→    .single();
+   690→   690→
+   691→   691→  if (planError) {
+   692→   692→    console.error("[Supabase] createMealPlan error:", planError);
+   693→   693→    return { data: null, error: planError.message };
+   694→   694→  }
+   695→   695→
+   696→   696→  // Insert items
+   697→   697→  if (items.length > 0) {
+   698→   698→    const itemPayloads = items.map((i) => {
+   699→   699→      const payload = mealItemToSupabase(i);
+   700→   700→      payload.meal_plan_id = planData.id;
+   701→   701→      delete payload.id;
+   702→   702→      return payload;
+   703→   703→    });
+   704→   704→
+   705→   705→    const { error: itemsError } = await client
+   706→   706→      .from("meal_plan_items")
+   707→   707→      .insert(itemPayloads);
+   708→   708→
+   709→   709→    if (itemsError) {
+   710→   710→      console.error("[Supabase] createMealPlanItems error:", itemsError);
+   711→   711→      // Plan was created but items failed — return partial success
+   712→   712→      return { data: mealPlanFromSupabase(planData, []), error: `Plan created but items failed: ${itemsError.message}` };
+   713→   713→    }
+   714→   714→  }
+   715→   715→
+   716→   716→  // Fetch complete plan with items
+   717→   717→  const { data: fullPlan } = await client
+   718→   718→    .from("meal_plans")
+   719→   719→    .select("*, meal_plan_items(*, foods!meal_plan_items_food_id_fkey(*, food_categories!foods_category_id_fkey(*)))")
+   720→   720→    .eq("id", planData.id)
+   721→   721→    .single();
+   722→   722→
+   723→   723→  const planItems = (fullPlan?.meal_plan_items || []).map((item: any) =>
+   724→   724→    mealItemFromSupabase(item, item.foods ? foodFromSupabase(item.foods, item.foods.food_categories) : null),
+   725→   725→  );
+   726→   726→
+   727→   727→  return { data: mealPlanFromSupabase(fullPlan || planData, planItems), error: null };
+   728→   728→}
+   729→   729→
+   730→   730→// ---------------------------------------------------------------------
+   731→   731→// FOOD RECORDS — Require authentication for writes
+   732→   732→// ---------------------------------------------------------------------
+   733→   733→export async function supabaseListFoodRecords(patientId: string, date?: string): Promise<any[]> {
+   734→   734→  const { client } = await getServerClient();
+   735→   735→  let query = client
+   736→   736→    .from("food_records")
+   737→   737→    .select("*, foods!food_records_food_id_fkey(*, food_categories!foods_category_id_fkey(*))")
+   738→   738→    .eq("patient_id", patientId)
+   739→   739→    .order("date", { ascending: false })
+   740→   740→    .limit(100);
+   741→   741→
+   742→   742→  if (date) {
+   743→   743→    const start = new Date(date);
+   744→   744→    start.setHours(0, 0, 0, 0);
+   745→   745→    const end = new Date(date);
+   746→   746→    end.setHours(23, 59, 59, 999);
+   747→   747→    query = query.gte("date", start.toISOString()).lte("date", end.toISOString());
+   748→   748→  }
+   749→   749→
+   750→   750→  const { data, error } = await query;
+   751→   751→  if (error) {
+   752→   752→    console.error("[Supabase] listFoodRecords error:", error);
+   753→   753→    return [];
+   754→   754→  }
+   755→   755→
+   756→   756→  return (data || []).map((row: any) =>
+   757→   757→    foodRecordFromSupabase(row, row.foods ? foodFromSupabase(row.foods, row.foods.food_categories) : null),
+   758→   758→  );
+   759→   759→}
+   760→   760→
+   761→   761→export async function supabaseCreateFoodRecord(record: any): Promise<{ data: any | null; error: string | null }> {
+   762→   762→  const { client, session } = await getServerClient();
+   763→   763→  if (!session) return { data: null, error: "Authentication required. Please log in." };
+   764→   764→
+   765→   765→  const { data, error } = await client
+   766→   766→    .from("food_records")
+   767→   767→    .insert({
+   768→   768→      patient_id: record.patientId ?? record.patient_id,
+   769→   769→      food_id: record.foodId ?? record.food_id,
+   770→   770→      slot: (record.slot ?? "LUNCH").toUpperCase(),
+   771→   771→      amount: record.amount,
+   772→   772→      consumed: record.consumed ?? 100,
+   773→   773→      date: record.date ?? new Date().toISOString(),
+   774→   774→      cal: record.cal ?? 0,
+   775→   775→      protein: record.protein ?? 0,
+   776→   776→      fat: record.fat ?? 0,
+   777→   777→      carb: record.carb ?? 0,
+   778→   778→      fiber: record.fiber ?? 0,
+   779→   779→      sodium: record.sodium ?? 0,
+   780→   780→      notes: record.notes,
+   781→   781→    })
+   782→   782→    .select()
+   783→   783→    .single();
+   784→   784→
+   785→   785→  if (error) return { data: null, error: error.message };
+   786→   786→  return { data: foodRecordFromSupabase(data), error: null };
+   787→   787→}
+   788→   788→
+   789→   789→export async function supabaseDeleteFoodRecord(id: string): Promise<{ error: string | null }> {
+   790→   790→  const { client, session } = await getServerClient();
+   791→   791→  if (!session) return { error: "Authentication required." };
+   792→   792→
+   793→   793→  const { error } = await client.from("food_records").delete().eq("id", id);
+   794→   794→  return { error: error?.message ?? null };
+   795→   795→}
+   796→   796→
+   797→   797→// ---------------------------------------------------------------------
+   798→   798→// WEIGHT RECORDS
+   799→   799→// ---------------------------------------------------------------------
+   800→   800→export async function supabaseListWeightRecords(patientId: string): Promise<any[]> {
+   801→   801→  const { client } = await getServerClient();
+   802→   802→  const { data, error } = await client
+   803→   803→    .from("weight_records")
+   804→   804→    .select("*")
+   805→   805→    .eq("patient_id", patientId)
+   806→   806→    .order("date", { ascending: true })
+   807→   807→    .limit(100);
+   808→   808→
+   809→   809→  if (error) return [];
+   810→   810→  return (data || []).map(weightRecordFromSupabase);
+   811→   811→}
+   812→   812→
+   813→   813→export async function supabaseCreateWeightRecord(record: any): Promise<{ data: any | null; error: string | null }> {
+   814→   814→  const { client, session } = await getServerClient();
+   815→   815→  if (!session) return { data: null, error: "Authentication required." };
+   816→   816→
+   817→   817→  const { data, error } = await client
+   818→   818→    .from("weight_records")
+   819→   819→    .insert({
+   820→   820→      patient_id: record.patientId ?? record.patient_id,
+   821→   821→      date: record.date ?? new Date().toISOString(),
+   822→   822→      weight: record.weight,
+   823→   823→      height: record.height,
+   824→   824→      bmi: record.bmi,
+   825→   825→      bmi_category: record.bmiCategory ?? record.bmi_category,
+   826→   826→      weight_change: record.weightChange ?? record.weight_change,
+   827→   827→      weight_change_pct: record.weightChangePct ?? record.weight_change_pct,
+   828→   828→      note: record.note,
+   829→   829→      created_by: session.user?.email ?? "system",
+   830→   830→    })
+   831→   831→    .select()
+   832→   832→    .single();
+   833→   833→
+   834→   834→  if (error) return { data: null, error: error.message };
+   835→   835→  return { data: weightRecordFromSupabase(data), error: null };
+   836→   836→}
+   837→   837→
+   838→   838→export async function supabaseDeleteWeightRecord(id: string): Promise<{ error: string | null }> {
+   839→   839→  const { client, session } = await getServerClient();
+   840→   840→  if (!session) return { error: "Authentication required." };
+   841→   841→
+   842→   842→  const { error } = await client.from("weight_records").delete().eq("id", id);
+   843→   843→  return { error: error?.message ?? null };
+   844→   844→}
+   845→   845→
+   846→   846→// ---------------------------------------------------------------------
+   847→   847→// NUTRITION ASSESSMENTS
+   848→   848→// ---------------------------------------------------------------------
+   849→   849→export async function supabaseListAssessments(patientId: string): Promise<any[]> {
+   850→   850→  const { client } = await getServerClient();
+   851→   851→  const { data, error } = await client
+   852→   852→    .from("nutrition_assessments")
+   853→   853→    .select("*")
+   854→   854→    .eq("patient_id", patientId)
+   855→   855→    .order("recorded_at", { ascending: false })
+   856→   856→    .limit(20);
+   857→   857→
+   858→   858→  if (error) return [];
+   859→   859→  return (data || []).map(assessmentFromSupabase);
+   860→   860→}
+   861→   861→
+   862→   862→export async function supabaseCreateAssessment(a: any): Promise<{ data: any | null; error: string | null }> {
+   863→   863→  const { client, session } = await getServerClient();
+   864→   864→  if (!session) return { data: null, error: "Authentication required." };
+   865→   865→
+   866→   866→  const { data, error } = await client
+   867→   867→    .from("nutrition_assessments")
+   868→   868→    .insert({
+   869→   869→      patient_id: a.patientId ?? a.patient_id,
+   870→   870→      recorded_at: a.recordedAt ?? a.recorded_at ?? new Date().toISOString(),
+   871→   871→      must: a.must,
+   872→   872→      must_score: a.mustScore ?? a.must_score,
+   873→   873→      sga: a.sga,
+   874→   874→      nrs2002: a.nrs2002,
+   875→   875→      nrs_score: a.nrsScore ?? a.nrs_score,
+   876→   876→      mna: a.mna,
+   877→   877→      mna_score: a.mnaScore ?? a.mna_score,
+   878→   878→      pps: a.pps,
+   879→   879→      ecog: a.ecog,
+   880→   880→      barthel: a.barthel,
+   881→   881→      frailty: a.frailty,
+   882→   882→      frailty_score: a.frailtyScore ?? a.frailty_score,
+   883→   883→      fall_risk: a.fallRisk ?? a.fall_risk,
+   884→   884→      hand_grip: a.handGrip ?? a.hand_grip,
+   885→   885→      calf_circ: a.calfCirc ?? a.calf_circ,
+   886→   886→      activity: (a.activity ?? "BED_REST").toUpperCase(),
+   887→   887→      stress: (a.stress ?? "NONE").toUpperCase(),
+   888→   888→      notes: a.notes,
+   889→   889→      created_by: session.user?.email ?? "system",
+   890→   890→    })
+   891→   891→    .select()
+   892→   892→    .single();
+   893→   893→
+   894→   894→  if (error) return { data: null, error: error.message };
+   895→   895→  return { data: assessmentFromSupabase(data), error: null };
+   896→   896→}
+   897→   897→
+   898→   898→export async function supabaseDeleteAssessment(id: string): Promise<{ error: string | null }> {
+   899→   899→  const { client, session } = await getServerClient();
+   900→   900→  if (!session) return { error: "Authentication required." };
+   901→   901→
+   902→   902→  const { error } = await client.from("nutrition_assessments").delete().eq("id", id);
+   903→   903→  return { error: error?.message ?? null };
+   904→   904→}
+   905→   905→
+   906→   906→// ---------------------------------------------------------------------
+   907→   907→// NUTRITION PRESETS
+   908→   908→// ---------------------------------------------------------------------
+   909→   909→export async function supabaseListPresets(patientId?: string): Promise<any[]> {
+   910→   910→  const { client } = await getServerClient();
+   911→   911→  let query = client
+   912→   912→    .from("nutrition_presets")
+   913→   913→    .select("*")
+   914→   914→    .is("deleted_at", null)
+   915→   915→    .order("is_favorite", { ascending: false })
+   916→   916→    .order("created_at", { ascending: true });
+   917→   917→
+   918→   918→  if (patientId) {
+   919→   919→    query = query.or(`patient_id.eq.${patientId},is_template.eq.true`);
+   920→   920→  }
+   921→   921→
+   922→   922→  const { data, error } = await query;
+   923→   923→  if (error) {
+   924→   924→    console.error("[Supabase] listPresets error:", error);
+   925→   925→    return [];
+   926→   926→  }
+   927→   927→  return (data || []).map(presetFromSupabase);
+   928→   928→}
+   929→   929→
+   930→   930→export async function supabaseCreatePreset(p: any): Promise<{ data: any | null; error: string | null }> {
+   931→   931→  const { client, session } = await getServerClient();
+   932→   932→  if (!session) return { data: null, error: "Authentication required." };
+   933→   933→
+   934→   934→  const { data, error } = await client
+   935→   935→    .from("nutrition_presets")
+   936→   936→    .insert({
+   937→   937→      patient_id: p.patientId ?? p.patient_id ?? null,
+   938→   938→      name: p.name,
+   939→   939→      description: p.description ?? "",
+   940→   940→      color: p.color ?? "#10b981",
+   941→   941→      icon: p.icon ?? "utensils",
+   942→   942→      is_template: p.isTemplate ?? p.is_template ?? false,
+   943→   943→      is_favorite: p.isFavorite ?? p.is_favorite ?? false,
+   944→   944→      total_cal: p.totalCal ?? p.total_cal,
+   945→   945→      target_weight: p.targetWeight ?? p.target_weight,
+   946→   946→      bmr: p.bmr,
+   947→   947→      tdee: p.tdee,
+   948→   948→      protein_pct: p.proteinPct ?? p.protein_pct,
+   949→   949→      carb_pct: p.carbPct ?? p.carb_pct,
+   950→   950→      fat_pct: p.fatPct ?? p.fat_pct,
+   951→   951→      protein_g: p.proteinG ?? p.protein_g,
+   952→   952→      carb_g: p.carbG ?? p.carb_g,
+   953→   953→      fat_g: p.fatG ?? p.fat_g,
+   954→   954→      fiber_g: p.fiberG ?? p.fiber_g ?? 25,
+   955→   955→      sodium_mg: p.sodiumMg ?? p.sodium_mg ?? 2300,
+   956→   956→      potassium_mg: p.potassiumMg ?? p.potassium_mg,
+   957→   957→      fluid_ml: p.fluidMl ?? p.fluid_ml,
+   958→   958→      goal: (p.goal ?? "GENERAL").toUpperCase(),
+   959→   959→      diagnoses: p.diagnoses ?? "",
+   960→   960→      created_by: session.user?.email ?? "system",
+   961→   961→      updated_by: session.user?.email ?? "system",
+   962→   962→    })
+   963→   963→    .select()
+   964→   964→    .single();
+   965→   965→
+   966→   966→  if (error) return { data: null, error: error.message };
+   967→   967→  return { data: presetFromSupabase(data), error: null };
+   968→   968→}
+   969→   969→
+   970→   970→// ---------------------------------------------------------------------
+   971→   971→// RECIPES
+   972→   972→// ---------------------------------------------------------------------
+   973→   973→export async function supabaseListRecipes(): Promise<any[]> {
+   974→   974→  const { client } = await getServerClient();
+   975→   975→  const { data, error } = await client
+   976→   976→    .from("recipes")
+   977→   977→    .select("*, recipe_items(*, foods!recipe_items_food_id_fkey(*, food_categories!foods_category_id_fkey(*)))")
+   978→   978→    .is("deleted_at", null)
+   979→   979→    .order("created_at", { ascending: false })
+   980→   980→    .limit(50);
+   981→   981→
+   982→   982→  if (error) return [];
+   983→   983→  return (data || []).map((row: any) => ({
+   984→   984→    id: row.id,
+   985→   985→    name: row.name,
+   986→   986→    description: row.description,
+   987→   987→    servings: row.servings,
+   988→   988→    method: row.method,
+   989→   989→    imageUrl: row.image_url,
+   990→   990→    deletedAt: row.deleted_at,
+   991→   991→    createdAt: row.created_at,
+   992→   992→    updatedAt: row.updated_at,
+   993→   993→    items: (row.recipe_items || []).map((ri: any) => ({
+   994→   994→      id: ri.id,
+   995→   995→      recipeId: ri.recipe_id,
+   996→   996→      foodId: ri.food_id,
+   997→   997→      amount: ri.amount,
+   998→   998→      food: ri.foods ? foodFromSupabase(ri.foods, ri.foods.food_categories) : null,
+   999→   999→    })),
+  1000→  1000→  }));
+  1001→  1001→}
+  1002→  1002→
+  1003→  1003→export async function supabaseCreateRecipe(r: any): Promise<{ data: any | null; error: string | null }> {
+  1004→  1004→  const { client, session } = await getServerClient();
+  1005→  1005→  if (!session) return { data: null, error: "Authentication required." };
+  1006→  1006→
+  1007→  1007→  const { data: recipeData, error: recipeError } = await client
+  1008→  1008→    .from("recipes")
+  1009→  1009→    .insert({
+  1010→  1010→      name: r.name,
+  1011→  1011→      description: r.description,
+  1012→  1012→      servings: r.servings ?? 1,
+  1013→  1013→      method: r.method,
+  1014→  1014→      image_url: r.imageUrl ?? r.image_url,
+  1015→  1015→    })
+  1016→  1016→    .select()
+  1017→  1017→    .single();
+  1018→  1018→
+  1019→  1019→  if (recipeError) return { data: null, error: recipeError.message };
+  1020→  1020→
+  1021→  1021→  if (r.items && r.items.length > 0) {
+  1022→  1022→    const items = r.items.map((i: any) => ({
+  1023→  1023→      recipe_id: recipeData.id,
+  1024→  1024→      food_id: i.foodId ?? i.food_id,
+  1025→  1025→      amount: i.amount,
+  1026→  1026→    }));
+  1027→  1027→    const { error: itemsError } = await client.from("recipe_items").insert(items);
+  1028→  1028→    if (itemsError) return { data: recipeData, error: itemsError.message };
+  1029→  1029→  }
+  1030→  1030→
+  1031→  1031→  return { data: recipeData, error: null };
+  1032→  1032→}
+  1033→  1033→
+  1034→  1034→export async function supabaseDeleteRecipe(id: string): Promise<{ error: string | null }> {
+  1035→  1035→  const { client, session } = await getServerClient();
+  1036→  1036→  if (!session) return { error: "Authentication required." };
+  1037→  1037→
+  1038→  1038→  const { error } = await client.from("recipes").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  1039→  1039→  return { error: error?.message ?? null };
+  1040→  1040→}
+  1041→  1041→
+  1042→  1042→// ---------------------------------------------------------------------
+  1043→  1043→// EXERCISE PLANS
+  1044→  1044→// ---------------------------------------------------------------------
+  1045→  1045→export async function supabaseListExercisePlans(patientId?: string): Promise<any[]> {
+  1046→  1046→  const { client } = await getServerClient();
+  1047→  1047→  let query = client
+  1048→  1048→    .from("exercise_plans")
+  1049→  1049→    .select("*, exercise_items(*)")
+  1050→  1050→    .is("deleted_at", null)
+  1051→  1051→    .order("date", { ascending: false })
+  1052→  1052→    .limit(20);
+  1053→  1053→
+  1054→  1054→  if (patientId) query = query.eq("patient_id", patientId);
+  1055→  1055→
+  1056→  1056→  const { data, error } = await query;
+  1057→  1057→  if (error) return [];
+  1058→  1058→  return (data || []).map((row: any) => ({
+  1059→  1059→    id: row.id,
+  1060→  1060→    patientId: row.patient_id,
+  1061→  1061→    date: row.date,
+  1062→  1062→    totalBurned: row.total_burned,
+  1063→  1063→    targetBurned: row.target_burned,
+  1064→  1064→    notes: row.notes,
+  1065→  1065→    deletedAt: row.deleted_at,
+  1066→  1066→    createdAt: row.created_at,
+  1067→  1067→    updatedAt: row.updated_at,
+  1068→  1068→    items: (row.exercise_items || []).map((ei: any) => ({
+  1069→  1069→      id: ei.id,
+  1070→  1070→      exercisePlanId: ei.exercise_plan_id,
+  1071→  1071→      name: ei.name,
+  1072→  1072→      type: ei.type,
+  1073→  1073→      intensity: ei.intensity,
+  1074→  1074→      duration: ei.duration,
+  1075→  1075→      caloriesBurned: ei.calories_burned,
+  1076→  1076→      met: ei.met,
+  1077→  1077→      notes: ei.notes,
+  1078→  1078→    })),
+  1079→  1079→  }));
+  1080→  1080→}
+  1081→  1081→
+  1082→  1082→export async function supabaseCreateExercisePlan(plan: any, items: any[]): Promise<{ data: any | null; error: string | null }> {
+  1083→  1083→  const { client, session } = await getServerClient();
+  1084→  1084→  if (!session) return { data: null, error: "Authentication required." };
+  1085→  1085→
+  1086→  1086→  const { data: planData, error: planError } = await client
+  1087→  1087→    .from("exercise_plans")
+  1088→  1088→    .insert({
+  1089→  1089→      patient_id: plan.patientId ?? plan.patient_id,
+  1090→  1090→      total_burned: plan.totalBurned ?? plan.total_burned ?? 0,
+  1091→  1091→      target_burned: plan.targetBurned ?? plan.target_burned ?? 0,
+  1092→  1092→      notes: plan.notes,
+  1093→  1093→    })
+  1094→  1094→    .select()
+  1095→  1095→    .single();
+  1096→  1096→
+  1097→  1097→  if (planError) return { data: null, error: planError.message };
+  1098→  1098→
+  1099→  1099→  if (items.length > 0) {
+  1100→  1100→    const itemPayloads = items.map((i) => ({
+  1101→  1101→      exercise_plan_id: planData.id,
+  1102→  1102→      name: i.name,
+  1103→  1103→      type: (i.type ?? "AEROBIC").toUpperCase(),
+  1104→  1104→      intensity: (i.intensity ?? "MODERATE").toUpperCase(),
+  1105→  1105→      duration: i.duration,
+  1106→  1106→      calories_burned: i.caloriesBurned ?? i.calories_burned ?? 0,
+  1107→  1107→      met: i.met ?? 3,
+  1108→  1108→      notes: i.notes,
+  1109→  1109→    }));
+  1110→  1110→    const { error: itemsError } = await client.from("exercise_items").insert(itemPayloads);
+  1111→  1111→    if (itemsError) return { data: planData, error: itemsError.message };
+  1112→  1112→  }
+  1113→  1113→
+  1114→  1114→  return { data: planData, error: null };
+  1115→  1115→}
+  1116→  1116→
+  1117→  1117→// ---------------------------------------------------------------------
+  1118→  1118→// SAVED MEAL PLANS
+  1119→  1119→// ---------------------------------------------------------------------
+  1120→  1120→export async function supabaseListSavedMealPlans(patientId?: string): Promise<any[]> {
+  1121→  1121→  const { client } = await getServerClient();
+  1122→  1122→  let query = client
+  1123→  1123→    .from("saved_meal_plans")
+  1124→  1124→    .select("*, saved_meal_plan_items(*, foods!saved_meal_plan_items_food_id_fkey(*, food_categories!foods_category_id_fkey(*)))")
+  1125→  1125→    .order("created_at", { ascending: false })
+  1126→  1126→    .limit(50);
+  1127→  1127→
+  1128→  1128→  if (patientId) query = query.eq("patient_id", patientId);
+  1129→  1129→
+  1130→  1130→  const { data, error } = await query;
+  1131→  1131→  if (error) return [];
+  1132→  1132→  return (data || []).map((row: any) => ({
+  1133→  1133→    id: row.id,
+  1134→  1134→    patientId: row.patient_id,
+  1135→  1135→    name: row.name,
+  1136→  1136→    date: row.date,
+  1137→  1137→    totalCal: row.total_cal,
+  1138→  1138→    totalProtein: row.total_protein,
+  1139→  1139→    totalFat: row.total_fat,
+  1140→  1140→    totalCarb: row.total_carb,
+  1141→  1141→    totalFiber: row.total_fiber,
+  1142→  1142→    totalSodium: row.total_sodium,
+  1143→  1143→    compliance: row.compliance,
+  1144→  1144→    notes: row.notes,
+  1145→  1145→    createdAt: row.created_at,
+  1146→  1146→    updatedAt: row.updated_at,
+  1147→  1147→    items: (row.saved_meal_plan_items || []).map((i: any) => ({
+  1148→  1148→      id: i.id,
+  1149→  1149→      savedMealPlanId: i.saved_meal_plan_id,
+  1150→  1150→      slot: i.slot,
+  1151→  1151→      foodId: i.food_id,
+  1152→  1152→      amount: i.amount,
+  1153→  1153→      cal: i.cal,
+  1154→  1154→      protein: i.protein,
+  1155→  1155→      fat: i.fat,
+  1156→  1156→      carb: i.carb,
+  1157→  1157→      fiber: i.fiber,
+  1158→  1158→      sodium: i.sodium,
+  1159→  1159→      food: i.foods ? foodFromSupabase(i.foods, i.foods.food_categories) : null,
+  1160→  1160→    })),
+  1161→  1161→  }));
+  1162→  1162→}
+  1163→  1163→
+  1164→  1164→export async function supabaseCreateSavedMealPlan(plan: any): Promise<{ data: any | null; error: string | null }> {
+  1165→  1165→  const { client, session } = await getServerClient();
+  1166→  1166→  if (!session) return { data: null, error: "Authentication required." };
+  1167→  1167→
+  1168→  1168→  const { data: planData, error: planError } = await client
+  1169→  1169→    .from("saved_meal_plans")
+  1170→  1170→    .insert({
+  1171→  1171→      patient_id: plan.patientId ?? plan.patient_id,
+  1172→  1172→      name: plan.name,
+  1173→  1173→      date: plan.date ?? new Date().toISOString(),
+  1174→  1174→      total_cal: plan.totalCal ?? plan.total_cal ?? 0,
+  1175→  1175→      total_protein: plan.totalProtein ?? plan.total_protein ?? 0,
+  1176→  1176→      total_fat: plan.totalFat ?? plan.total_fat ?? 0,
+  1177→  1177→      total_carb: plan.totalCarb ?? plan.total_carb ?? 0,
+  1178→  1178→      total_fiber: plan.totalFiber ?? plan.total_fiber ?? 0,
+  1179→  1179→      total_sodium: plan.totalSodium ?? plan.total_sodium ?? 0,
+  1180→  1180→      compliance: plan.compliance ?? 0,
+  1181→  1181→      notes: plan.notes,
+  1182→  1182→    })
+  1183→  1183→    .select()
+  1184→  1184→    .single();
+  1185→  1185→
+  1186→  1186→  if (planError) return { data: null, error: planError.message };
+  1187→  1187→
+  1188→  1188→  if (plan.items && plan.items.length > 0) {
+  1189→  1189→    const items = plan.items.map((i: any) => ({
+  1190→  1190→      saved_meal_plan_id: planData.id,
+  1191→  1191→      slot: (i.slot ?? "LUNCH").toUpperCase(),
+  1192→  1192→      food_id: i.foodId ?? i.food_id,
+  1193→  1193→      amount: i.amount,
+  1194→  1194→      cal: i.cal ?? 0,
+  1195→  1195→      protein: i.protein ?? 0,
+  1196→  1196→      fat: i.fat ?? 0,
+  1197→  1197→      carb: i.carb ?? 0,
+  1198→  1198→      fiber: i.fiber ?? 0,
+  1199→  1199→      sodium: i.sodium ?? 0,
+  1200→  1200→    }));
+  1201→  1201→    const { error: itemsError } = await client.from("saved_meal_plan_items").insert(items);
+  1202→  1202→    if (itemsError) return { data: planData, error: itemsError.message };
+  1203→  1203→  }
+  1204→  1204→
+  1205→  1205→  return { data: planData, error: null };
+  1206→  1206→}
+  1207→  1207→
+  1208→  1208→export async function supabaseDeleteSavedMealPlan(id: string): Promise<{ error: string | null }> {
+  1209→  1209→  const { client, session } = await getServerClient();
+  1210→  1210→  if (!session) return { error: "Authentication required." };
+  1211→  1211→
+  1212→  1212→  const { error } = await client.from("saved_meal_plans").delete().eq("id", id);
+  1213→  1213→  return { error: error?.message ?? null };
+  1214→  1214→}
+  1215→  1215→
+  1216→  1216→// ---------------------------------------------------------------------
+  1217→  1217→// DASHBOARD STATS
+  1218→  1218→// ---------------------------------------------------------------------
+  1219→  1219→export async function supabaseGetDashboardStats(): Promise<any> {
+  1220→  1220→  const { client } = await getServerClient();
+  1221→  1221→
+  1222→  1222→  const [patients, foods, mealPlans, foodRecords] = await Promise.all([
+  1223→  1223→    client.from("patients").select("id", { count: "exact", head: true }).is("deleted_at", null),
+  1224→  1224→    client.from("foods").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("approved", true),
+  1225→  1225→    client.from("meal_plans").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "FINAL"),
+  1226→  1226→    client.from("food_records").select("id, cal", { count: "exact" }).gte("date", new Date(Date.now() - 86400000).toISOString()),
+  1227→  1227→  ]);
+  1228→  1228→
+  1229→  1229→  const todayCalories = (foodRecords.data || []).reduce((sum: number, r: any) => sum + (r.cal || 0), 0);
+  1230→  1230→
+  1231→  1231→  return {
+  1232→  1232→    totalPatients: patients.count ?? 0,
+  1233→  1233→    activeMealPlans: mealPlans.count ?? 0,
+  1234→  1234→    totalFoods: foods.count ?? 0,
+  1235→  1235→    todayCalories: Math.round(todayCalories),
+  1236→  1236→    todayFoodRecords: foodRecords.data?.length ?? 0,
+  1237→  1237→  };
+  1238→  1238→}
+  1239→  1239→
+  1240→  1240→// ---------------------------------------------------------------------
+  1241→  1241→// TEST WRITE — Insert a test row and read it back
+  1242→  1242→// ---------------------------------------------------------------------
+  1243→  1243→export async function supabaseTestWrite(): Promise<{ success: boolean; data: any; error: string | null }> {
+  1244→  1244→  const { client, session } = await getServerClient();
+  1245→  1245→
+  1246→  1246→  if (!session) {
+  1247→  1247→    return {
+  1248→  1248→      success: false,
+  1249→  1249→      data: null,
+  1250→  1250→      error: "Authentication required. Please log in first, then click Test Write again.",
+  1251→  1251→    };
+  1252→  1252→  }
+  1253→  1253→
+  1254→  1254→  // Insert test row into audit_logs (safe table for testing)
+  1255→  1255→  const testId = crypto.randomUUID();
+  1256→  1256→  const { data: insertData, error: insertError } = await client
+  1257→  1257→    .from("audit_logs")
+  1258→  1258→    .insert({
+  1259→  1259→      entity: "test_connection",
+  1260→  1260→      entity_id: testId,
+  1261→  1261→      action: "TEST_WRITE",
+  1262→  1262→      actor: session.user?.email ?? "unknown",
+  1263→  1263→      changes: { timestamp: new Date().toISOString(), source: "database-monitor" },
+  1264→  1264→    })
+  1265→  1265→    .select()
+  1266→  1266→    .single();
+  1267→  1267→
+  1268→  1268→  if (insertError) {
+  1269→  1269→    return { success: false, data: null, error: insertError.message };
+  1270→  1270→  }
+  1271→  1271→
+  1272→  1272→  // Read it back
+  1273→  1273→  const { data: readData, error: readError } = await client
+  1274→  1274→    .from("audit_logs")
+  1275→  1275→    .select("*")
+  1276→  1276→    .eq("entity_id", testId)
+  1277→  1277→    .order("created_at", { ascending: false })
+  1278→  1278→    .limit(1)
+  1279→  1279→    .single();
+  1280→  1280→
+  1281→  1281→  if (readError) {
+  1282→  1282→    return { success: true, data: insertData, error: null };
+  1283→  1283→  }
+  1284→  1284→
+  1285→  1285→  return { success: true, data: readData, error: null };
+  1286→  1286→}
+  1287→  1287→
+  1288→  1288→// ---------------------------------------------------------------------
+  1289→  1289→// DATABASE INFO — Get Supabase project metadata
+  1290→  1290→// ---------------------------------------------------------------------
+  1291→  1291→export async function supabaseGetDatabaseInfo(): Promise<any> {
+  1292→  1292→  const { client, session } = await getServerClient();
+  1293→  1293→
+  1294→  1294→  // Test connection by querying food_categories (publicly readable)
+  1295→  1295→  const start = Date.now();
+  1296→  1296→  const { error } = await client.from("food_categories").select("id").limit(1);
+  1297→  1297→  const latency = Date.now() - start;
+  1298→  1298→
+  1299→  1299→  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  1300→  1300→  const projectId = process.env.SUPABASE_PROJECT_ID || url.replace("https://", "").replace(".supabase.co", "");
+  1301→  1301→  const region = "Southeast Asia (Singapore)"; // Default — can't query without service role
+  1302→  1302→
+  1303→  1303→  // Count rows in key tables (public reads)
+  1304→  1304→  const [foodsCount, categoriesCount, patientsCount, mealPlansCount] = await Promise.all([
+  1305→  1305→    client.from("foods").select("id", { count: "exact", head: true }).is("deleted_at", null),
+  1306→  1306→    client.from("food_categories").select("id", { count: "exact", head: true }),
+  1307→  1307→    client.from("patients").select("id", { count: "exact", head: true }).is("deleted_at", null),
+  1308→  1308→    client.from("meal_plans").select("id", { count: "exact", head: true }).is("deleted_at", null),
+  1309→  1309→  ]);
+  1310→  1310→
+  1311→  1311→  return {
+  1312→  1312→    databaseType: "Supabase PostgreSQL",
+  1313→  1313→    isConnected: !error,
+  1314→  1314→    latency: latency,
+  1315→  1315→    error: error?.message ?? null,
+  1316→  1316→    supabaseUrl: url,
+  1317→  1317→    projectId: projectId,
+  1318→  1318→    region: region,
+  1319→  1319→    schema: "public",
+  1320→  1320→    postgresVersion: "15.x (Supabase managed)",
+  1321→  1321→    session: session
+  1322→  1322→      ? {
+  1323→  1323→          userId: session.user.id,
+  1324→  1324→          email: session.user.email,
+  1325→  1325→          isAuthenticated: true,
+  1326→  1326→        }
+  1327→  1327→      : {
+  1328→  1328→          isAuthenticated: false,
+  1329→  1329→        },
+  1330→  1330→    tableCounts: {
+  1331→  1331→      foods: foodsCount.count ?? 0,
+  1332→  1332→      food_categories: categoriesCount.count ?? 0,
+  1333→  1333→      patients: patientsCount.count ?? 0,
+  1334→  1334→      meal_plans: mealPlansCount.count ?? 0,
+  1335→  1335→    },
+  1336→  1336→    authConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  1337→  1337→    realtimeAvailable: true,
+  1338→  1338→    storageConfigured: false, // Would need service role key to verify
+  1339→  1339→    anonKeyConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  1340→  1340→  };
+  1341→  1341→}
+  1342→  1342→

@@ -1,0 +1,1572 @@
+     1→"use client";
+     2→
+     3→import * as React from "react";
+     4→import {
+     5→  Utensils,
+     6→  Sparkles,
+     7→  User,
+     8→  Clock,
+     9→  CheckCircle2,
+    10→  Target,
+    11→  TrendingUp,
+    12→  Brain,
+    13→  AlertCircle,
+    14→  Plus,
+    15→  Pencil,
+    16→  Trash2,
+    17→  Search,
+    18→  X,
+    19→  Bookmark,
+    20→  Stethoscope,
+    21→  Activity,
+    22→  Save,
+    23→  FolderOpen,
+    24→} from "lucide-react";
+    25→import {
+    26→  Card,
+    27→  CardContent,
+    28→  CardHeader,
+    29→  CardTitle,
+    30→} from "@/components/ui/card";
+    31→import { Button } from "@/components/ui/button";
+    32→import { Input } from "@/components/ui/input";
+    33→import { Label } from "@/components/ui/label";
+    34→import { Badge } from "@/components/ui/badge";
+    35→import { Progress } from "@/components/ui/progress";
+    36→import { Skeleton } from "@/components/ui/skeleton";
+    37→import {
+    38→  Select,
+    39→  SelectContent,
+    40→  SelectItem,
+    41→  SelectTrigger,
+    42→  SelectValue,
+    43→} from "@/components/ui/select";
+    44→import {
+    45→  Dialog,
+    46→  DialogContent,
+    47→  DialogHeader,
+    48→  DialogTitle,
+    49→  DialogFooter,
+    50→  DialogDescription,
+    51→} from "@/components/ui/dialog";
+    52→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+    53→import { ScrollArea } from "@/components/ui/scroll-area";
+    54→import { toast } from "sonner";
+    55→import {
+    56→  PageHeader,
+    57→  SectionCard,
+    58→  StatCard,
+    59→  EmptyState,
+    60→} from "@/components/carelivia/ui-helpers";
+    61→import {
+    62→  usePatients,
+    63→  useMealPlans,
+    64→  useGenerateMealPlan,
+    65→  usePresets,
+    66→  useAddMealItem,
+    67→  useUpdateMealItem,
+    68→  useDeleteMealItem,
+    69→  useFoods,
+    70→  useCreateSavedMenu,
+    71→  useMarkSavedMenuUsed,
+    72→  useSavedMenus,
+    73→  useCreateSavedMealPlan,
+    74→} from "@/hooks/use-carelivia";
+    75→import { useCareLiviaStore } from "@/store/carelivia";
+    76→import {
+    77→  DIAGNOSIS_ADJUSTMENTS,
+    78→  MEAL_DISTRIBUTION,
+    79→} from "@/lib/clinical/constants";
+    80→import type { DiagnosisType, MealSlot } from "@prisma/client";
+    81→
+    82→const SLOT_LABELS: Record<MealSlot, string> = {
+    83→  BREAKFAST: "Sarapan",
+    84→  MORNING_SNACK: "Snack Pagi",
+    85→  LUNCH: "Makan Siang",
+    86→  AFTERNOON_SNACK: "Snack Sore",
+    87→  DINNER: "Makan Malam",
+    88→  EVENING_SNACK: "Snack Malam",
+    89→};
+    90→
+    91→const SLOT_TARGET_PCT: Record<MealSlot, number> = {
+    92→  BREAKFAST: MEAL_DISTRIBUTION.BREAKFAST * 100,
+    93→  MORNING_SNACK: MEAL_DISTRIBUTION.MORNING_SNACK * 100,
+    94→  LUNCH: MEAL_DISTRIBUTION.LUNCH * 100,
+    95→  AFTERNOON_SNACK: MEAL_DISTRIBUTION.AFTERNOON_SNACK * 100,
+    96→  DINNER: MEAL_DISTRIBUTION.DINNER * 100,
+    97→  EVENING_SNACK: MEAL_DISTRIBUTION.EVENING_SNACK * 100,
+    98→};
+    99→
+   100→const SLOT_COLORS: Record<MealSlot, string> = {
+   101→  BREAKFAST: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+   102→  MORNING_SNACK: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+   103→  LUNCH: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+   104→  AFTERNOON_SNACK: "bg-teal-500/10 text-teal-700 dark:text-teal-400",
+   105→  DINNER: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
+   106→  EVENING_SNACK: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400",
+   107→};
+   108→
+   109→const ALL_SLOTS = Object.keys(SLOT_LABELS) as MealSlot[];
+   110→
+   111→export function MealPlanView() {
+   112→  const { data: patients } = usePatients();
+   113→  const { activePatientId } = useCareLiviaStore();
+   114→  const [selectedPatientId, setSelectedPatientId] = React.useState<string>(
+   115→    activePatientId || "",
+   116→  );
+   117→  const [activePresetId, setActivePresetId] = React.useState<string | null>(null);
+   118→  const [activePresetName, setActivePresetName] = React.useState<string | null>(null);
+   119→
+   120→  React.useEffect(() => {
+   121→    if (activePatientId && !selectedPatientId) {
+   122→      setSelectedPatientId(activePatientId);
+   123→    }
+   124→  }, [activePatientId, selectedPatientId]);
+   125→
+   126→  const { data: plans, isLoading } = useMealPlans(selectedPatientId || undefined);
+   127→  const { data: presets } = usePresets(selectedPatientId || undefined);
+   128→  const generateMut = useGenerateMealPlan();
+   129→
+   130→  const latestPlan = plans?.[0];
+   131→  const selectedPatient = patients?.find((p) => p.id === selectedPatientId);
+   132→  const patientPresets = (presets || []).filter((p: any) => !p.isTemplate);
+   133→  const templatePresets = (presets || []).filter((p: any) => p.isTemplate);
+   134→
+   135→  // Sync active preset from latest meal plan
+   136→  React.useEffect(() => {
+   137→    if (latestPlan?.presetId && !activePresetId) {
+   138→      setActivePresetId(latestPlan.presetId);
+   139→      setActivePresetName(latestPlan.preset?.name || null);
+   140→    }
+   141→  }, [latestPlan, activePresetId]);
+   142→
+   143→  const handleGenerate = async () => {
+   144→    if (!selectedPatientId) {
+   145→      toast.error("Pilih pasien terlebih dahulu");
+   146→      return;
+   147→    }
+   148→    try {
+   149→      await generateMut.mutateAsync({
+   150→        patientId: selectedPatientId,
+   151→        presetId: activePresetId || undefined,
+   152→      });
+   153→      toast.success(
+   154→        activePresetName
+   155→          ? `Meal plan dibuat dengan preset "${activePresetName}"`
+   156→          : "Meal plan berhasil dibuat dengan AI",
+   157→      );
+   158→    } catch (e: any) {
+   159→      toast.error(e.message || "Gagal membuat meal plan");
+   160→    }
+   161→  };
+   162→
+   163→  const handleSelectPreset = (preset: any) => {
+   164→    setActivePresetId(preset.id);
+   165→    setActivePresetName(preset.name);
+   166→    toast.success(`Preset "${preset.name}" dipilih — klik Generate untuk membuat Meal Plan baru`);
+   167→  };
+   168→
+   169→  return (
+   170→    <div>
+   171→      <PageHeader
+   172→        title="AI Meal Plan Generator"
+   173→        subtitle="Optimasi rencana makan berbasis TKPI/DKBM + diagnosis PERKENI/ESPEN"
+   174→        icon={Utensils}
+   175→        actions={
+   176→          <Button onClick={handleGenerate} disabled={generateMut.isPending || !selectedPatientId}>
+   177→            {generateMut.isPending ? (
+   178→              <>
+   179→                <Sparkles className="mr-2 h-4 w-4 animate-pulse" /> Membuat...
+   180→              </>
+   181→            ) : (
+   182→              <>
+   183→                <Sparkles className="mr-2 h-4 w-4" /> Generate Meal Plan
+   184→              </>
+   185→            )}
+   186→          </Button>
+   187→        }
+   188→      />
+   189→
+   190→      {/* Patient selector + Preset selector */}
+   191→      <div className="mb-4 space-y-3">
+   192→        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   193→          <div className="flex items-center gap-2">
+   194→            <User className="h-4 w-4 text-muted-foreground" />
+   195→            <span className="text-sm font-medium">Pasien:</span>
+   196→          </div>
+   197→          <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
+   198→            <SelectTrigger className="w-full sm:w-72">
+   199→              <SelectValue placeholder="Pilih pasien..." />
+   200→            </SelectTrigger>
+   201→            <SelectContent>
+   202→              {(patients || []).map((p) => (
+   203→                <SelectItem key={p.id} value={p.id}>
+   204→                  {p.name} ({p.mrn})
+   205→                </SelectItem>
+   206→              ))}
+   207→            </SelectContent>
+   208→          </Select>
+   209→          {selectedPatient && (
+   210→            <div className="flex flex-wrap gap-1">
+   211→              {selectedPatient.diagnoses.slice(0, 3).map((d: string) => (
+   212→                <Badge key={d} variant="secondary" className="text-[10px]">
+   213→                  {DIAGNOSIS_ADJUSTMENTS[d as DiagnosisType]?.label.split(" ")[0] || d}
+   214→                </Badge>
+   215→              ))}
+   216→            </div>
+   217→          )}
+   218→        </div>
+   219→
+   220→        {/* Preset selector */}
+   221→        {selectedPatientId && (patientPresets.length > 0 || templatePresets.length > 0) && (
+   222→          <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 sm:flex-row sm:items-center">
+   223→            <div className="flex items-center gap-2">
+   224→              <Bookmark className="h-4 w-4 text-primary" />
+   225→              <span className="text-sm font-medium">Nutrition Preset:</span>
+   226→            </div>
+   227→            <Select
+   228→              value={activePresetId || "none"}
+   229→              onValueChange={(v) => {
+   230→                if (v === "none") {
+   231→                  setActivePresetId(null);
+   232→                  setActivePresetName(null);
+   233→                  toast.info("Preset dinonaktifkan — akan pakai target CareLivia default");
+   234→                } else {
+   235→                  const p = [...patientPresets, ...templatePresets].find(
+   236→                    (x: any) => x.id === v,
+   237→                  );
+   238→                  if (p) handleSelectPreset(p);
+   239→                }
+   240→              }}
+   241→            >
+   242→              <SelectTrigger className="w-full sm:w-64">
+   243→                <SelectValue placeholder="Tanpa preset (default CareLivia)" />
+   244→              </SelectTrigger>
+   245→              <SelectContent>
+   246→                <SelectItem value="none">— Tanpa preset (default CareLivia) —</SelectItem>
+   247→                {patientPresets.length > 0 && (
+   248→                  <>
+   249→                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+   250→                      Preset Pasien
+   251→                    </p>
+   252→                    {patientPresets.map((p: any) => (
+   253→                      <SelectItem key={p.id} value={p.id}>
+   254→                        {p.isFavorite ? "★ " : ""}{p.name} · {Math.round(p.totalCal)} kcal
+   255→                      </SelectItem>
+   256→                    ))}
+   257→                  </>
+   258→                )}
+   259→                {templatePresets.length > 0 && (
+   260→                  <>
+   261→                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+   262→                      Template Klinis
+   263→                    </p>
+   264→                    {templatePresets.map((p: any) => (
+   265→                      <SelectItem key={p.id} value={p.id}>
+   266→                        {p.name} · {Math.round(p.totalCal)} kcal
+   267→                      </SelectItem>
+   268→                    ))}
+   269→                  </>
+   270→                )}
+   271→              </SelectContent>
+   272→            </Select>
+   273→            {activePresetName && (
+   274→              <Badge variant="default" className="w-fit gap-1">
+   275→                <Bookmark className="h-3 w-3" />
+   276→                {activePresetName}
+   277→              </Badge>
+   278→            )}
+   279→          </div>
+   280→        )}
+   281→      </div>
+   282→
+   283→      {!selectedPatientId ? (
+   284→        <EmptyState
+   285→          title="Pilih pasien untuk memulai"
+   286→          description="Sistem akan menghitung target kalori CareLivia lalu mengoptimasi menu dari database."
+   287→          icon={Utensils}
+   288→        />
+   289→      ) : isLoading ? (
+   290→        <Skeleton className="h-96 rounded-xl" />
+   291→      ) : !latestPlan ? (
+   292→        <EmptyState
+   293→          title="Belum ada meal plan"
+   294→          description="Klik 'Generate Meal Plan' untuk membuat rencana makan AI."
+   295→          icon={Sparkles}
+   296→          action={
+   297→            <Button onClick={handleGenerate} disabled={generateMut.isPending}>
+   298→              <Sparkles className="mr-2 h-4 w-4" /> Generate Sekarang
+   299→            </Button>
+   300→          }
+   301→        />
+   302→      ) : (
+   303→        <MealPlanDetail plan={latestPlan} />
+   304→      )}
+   305→    </div>
+   306→  );
+   307→}
+   308→
+   309→function MealPlanDetail({ plan }: { plan: any }) {
+   310→  const compliance = plan.compliance || 0;
+   311→  const [pickerOpen, setPickerOpen] = React.useState(false);
+   312→  const [pickerSlot, setPickerSlot] = React.useState<MealSlot>("BREAKFAST");
+   313→  const [editingItem, setEditingItem] = React.useState<any | null>(null);
+   314→  const [saveMenuSlot, setSaveMenuSlot] = React.useState<MealSlot | null>(null);
+   315→  const [savedMenuPickerSlot, setSavedMenuPickerSlot] = React.useState<MealSlot | null>(null);
+   316→  const [saveAllOpen, setSaveAllOpen] = React.useState(false);
+   317→
+   318→  const addMut = useAddMealItem(plan.id);
+   319→  const updateMut = useUpdateMealItem(plan.id);
+   320→  const deleteMut = useDeleteMealItem(plan.id);
+   321→  const createSavedMenuMut = useCreateSavedMenu();
+   322→  const markSavedMenuUsedMut = useMarkSavedMenuUsed();
+   323→  const createSavedMealPlanMut = useCreateSavedMealPlan();
+   324→
+   325→  const itemsBySlot = (plan.items || []).reduce(
+   326→    (acc: Record<string, any[]>, item: any) => {
+   327→      (acc[item.slot] = acc[item.slot] || []).push(item);
+   328→      return acc;
+   329→    },
+   330→    {} as Record<string, any[]>,
+   331→  );
+   332→
+   333→  const totalPlanCal = (plan.items || []).reduce((s: number, i: any) => s + i.cal, 0) || plan.totalCal;
+   334→
+   335→  const targetMet = {
+   336→    cal: plan.totalCal >= plan.targetCal * 0.9 && plan.totalCal <= plan.targetCal * 1.1,
+   337→    protein: plan.totalProtein >= plan.targetProtein * 0.85,
+   338→    fiber: plan.totalFiber >= plan.targetFiber * 0.8,
+   339→    sodium: plan.totalSodium <= plan.targetSodium,
+   340→  };
+   341→
+   342→  const openAddPicker = (slot: MealSlot) => {
+   343→    setEditingItem(null);
+   344→    setPickerSlot(slot);
+   345→    setPickerOpen(true);
+   346→  };
+   347→
+   348→  const openReplacePicker = (item: any) => {
+   349→    setEditingItem(item);
+   350→    setPickerSlot(item.slot);
+   351→    setPickerOpen(true);
+   352→  };
+   353→
+   354→  const handleDelete = async (item: any) => {
+   355→    try {
+   356→      await deleteMut.mutateAsync(item.id);
+   357→      toast.success(`${item.food.name} dihapus dari ${SLOT_LABELS[item.slot as MealSlot]}`);
+   358→    } catch (e: any) {
+   359→      toast.error(e.message || "Gagal menghapus item");
+   360→    }
+   361→  };
+   362→
+   363→  return (
+   364→    <div className="space-y-4">
+   365→      {/* Clinical context banner — activity/stress from assessment */}
+   366→      <ClinicalContextBanner plan={plan} />
+   367→
+   368→      {/* Preset badge */}
+   369→      {plan.preset && (
+   370→        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+   371→          <div
+   372→            className="flex h-7 w-7 items-center justify-center rounded-md text-white"
+   373→            style={{ backgroundColor: plan.preset.color }}
+   374→          >
+   375→            <Bookmark className="h-3.5 w-3.5" />
+   376→          </div>
+   377→          <div className="flex-1">
+   378→            <p className="text-xs font-semibold text-foreground">
+   379→              Meal Plan menggunakan Preset: {plan.preset.name}
+   380→            </p>
+   381→            <p className="text-[11px] text-muted-foreground">
+   382→              {plan.preset.description || `${Math.round(plan.preset.totalCal)} kcal · P${Math.round(plan.preset.proteinG)}g K${Math.round(plan.preset.carbG)}g L${Math.round(plan.preset.fatG)}g`}
+   383→            </p>
+   384→          </div>
+   385→          <Badge variant="outline" className="text-[10px]">
+   386→            v{plan.preset.version}
+   387→          </Badge>
+   388→        </div>
+   389→      )}
+   390→
+   391→      {/* Save All Menus button — saves all 6 slots at once */}
+   392→      <div className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-primary/30 bg-primary/5 p-3">
+   393→        <Save className="h-5 w-5 text-primary" />
+   394→        <div className="flex-1">
+   395→          <p className="text-sm font-semibold text-foreground">Simpan Semua Menu</p>
+   396→          <p className="text-[11px] text-muted-foreground">
+   397→            Simpan seluruh menu (Sarapan, Snack Pagi, Makan Siang, Snack Sore, Makan Malam, Snack Malam) ke Saved Meal Library sekaligus
+   398→          </p>
+   399→        </div>
+   400→        <Button size="sm" onClick={() => setSaveAllOpen(true)}>
+   401→          <Save className="mr-2 h-4 w-4" /> Simpan Semua
+   402→        </Button>
+   403→      </div>
+   404→
+   405→      {/* KPIs */}
+   406→      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+   407→        <StatCard
+   408→          label="Target Kalori"
+   409→          value={plan.targetCal}
+   410→          unit="kcal"
+   411→          icon={Target}
+   412→          color="emerald"
+   413→          sublabel={`Aktual: ${plan.totalCal} kcal`}
+   414→        />
+   415→        <StatCard
+   416→          label="Compliance"
+   417→          value={compliance}
+   418→          unit="%"
+   419→          icon={CheckCircle2}
+   420→          color={compliance >= 80 ? "emerald" : compliance >= 60 ? "amber" : "rose"}
+   421→        />
+   422→        <StatCard
+   423→          label="Protein"
+   424→          value={`${plan.totalProtein}/${plan.targetProtein}`}
+   425→          unit="g"
+   426→          icon={TrendingUp}
+   427→          color="violet"
+   428→        />
+   429→        <StatCard
+   430→          label="Natrium"
+   431→          value={`${plan.totalSodium}/${plan.targetSodium}`}
+   432→          unit="mg"
+   433→          icon={AlertCircle}
+   434→          color={plan.totalSodium <= plan.targetSodium ? "emerald" : "rose"}
+   435→        />
+   436→      </div>
+   437→
+   438→      {/* AI reasoning */}
+   439→      {plan.aiReasoning && (
+   440→        <Alert>
+   441→          <Brain className="h-4 w-4" />
+   442→          <AlertTitle className="flex items-center gap-2">
+   443→            Evaluasi AI CareLivia
+   444→            <Badge variant="outline" className="text-[10px]">
+   445→              {plan.aiModel}
+   446→            </Badge>
+   447→          </AlertTitle>
+   448→          <AlertDescription className="mt-2 text-sm leading-relaxed">
+   449→            {plan.aiReasoning}
+   450→          </AlertDescription>
+   451→        </Alert>
+   452→      )}
+   453→
+   454→      {/* Target vs Aktual */}
+   455→      <SectionCard
+   456→        title="Ringkasan Nutrisi"
+   457→        description="Target vs aktual makronutrien & mikronutrien"
+   458→      >
+   459→        <div className="grid gap-3 sm:grid-cols-2">
+   460→          <NutritionCompare
+   461→            label="Kalori"
+   462→            actual={plan.totalCal}
+   463→            target={plan.targetCal}
+   464→            unit="kcal"
+   465→            met={targetMet.cal}
+   466→          />
+   467→          <NutritionCompare
+   468→            label="Protein"
+   469→            actual={plan.totalProtein}
+   470→            target={plan.targetProtein}
+   471→            unit="g"
+   472→            met={targetMet.protein}
+   473→          />
+   474→          <NutritionCompare
+   475→            label="Karbohidrat"
+   476→            actual={plan.totalCarb}
+   477→            target={plan.targetCarb}
+   478→            unit="g"
+   479→          />
+   480→          <NutritionCompare
+   481→            label="Lemak"
+   482→            actual={plan.totalFat}
+   483→            target={plan.targetFat}
+   484→            unit="g"
+   485→          />
+   486→          <NutritionCompare
+   487→            label="Serat"
+   488→            actual={plan.totalFiber}
+   489→            target={plan.targetFiber}
+   490→            unit="g"
+   491→            met={targetMet.fiber}
+   492→          />
+   493→          <NutritionCompare
+   494→            label="Natrium"
+   495→            actual={plan.totalSodium}
+   496→            target={plan.targetSodium}
+   497→            unit="mg"
+   498→            met={targetMet.sodium}
+   499→            inverted
+   500→          />
+   501→        </div>
+   502→      </SectionCard>
+   503→
+   504→      {/* Meal items by slot — editable */}
+   505→      <SectionCard
+   506→        title="Detail Menu per Waktu Makan"
+   507→        description={`${(plan.items || []).length} item · distribusi: Sarapan 20% · Snack Pagi 10% · Siang 30% · Snack Sore 10% · Malam 25% · Snack Malam 5%`}
+   508→        actions={
+   509→          <Badge variant="outline" className="text-[10px]">
+   510→            Dapat diedit
+   511→          </Badge>
+   512→        }
+   513→      >
+   514→        <div className="space-y-3">
+   515→          {ALL_SLOTS.map((slot) => {
+   516→            const items = itemsBySlot[slot] || [];
+   517→            const slotCal = items.reduce((s, i) => s + i.cal, 0);
+   518→            const targetPct = SLOT_TARGET_PCT[slot];
+   519→            const actualPct =
+   520→              totalPlanCal > 0 ? Math.round((slotCal / totalPlanCal) * 100) : 0;
+   521→            const targetSlotCal = Math.round(plan.targetCal * (targetPct / 100));
+   522→            // deviation: how far actual % is from target %
+   523→            const deviation = actualPct - targetPct;
+   524→            const devColor =
+   525→              Math.abs(deviation) <= 3
+   526→                ? "text-emerald-600 dark:text-emerald-400"
+   527→                : Math.abs(deviation) <= 8
+   528→                  ? "text-amber-600 dark:text-amber-400"
+   529→                  : "text-rose-600 dark:text-rose-400";
+   530→
+   531→            return (
+   532→              <div
+   533→                key={slot}
+   534→                className="rounded-lg border border-border/60 overflow-hidden"
+   535→              >
+   536→                {/* Slot header with target % + actual % */}
+   537→                <div
+   538→                  className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 ${SLOT_COLORS[slot]}`}
+   539→                >
+   540→                  <div className="flex items-center gap-2">
+   541→                    <Clock className="h-3.5 w-3.5" />
+   542→                    <span className="text-sm font-semibold">
+   543→                      {SLOT_LABELS[slot]}
+   544→                    </span>
+   545→                    <Badge
+   546→                      variant="outline"
+   547→                      className="border-current/30 bg-background/40 text-[10px] font-bold"
+   548→                    >
+   549→                      Target {targetPct}%
+   550→                    </Badge>
+   551→                  </div>
+   552→                  <div className="flex items-center gap-3">
+   553→                    <div className="flex flex-col items-end leading-tight">
+   554→                      <span className="text-[10px] opacity-70">Aktual</span>
+   555→                      <span className={`text-xs font-bold ${devColor}`}>
+   556→                        {actualPct}%
+   557→                      </span>
+   558→                    </div>
+   559→                    <span className="text-xs font-bold">
+   560→                      {Math.round(slotCal)}
+   561→                      <span className="ml-0.5 text-[10px] font-normal opacity-70">
+   562→                        / {targetSlotCal} kcal
+   563→                      </span>
+   564→                    </span>
+   565→                    <Button
+   566→                      size="sm"
+   567→                      variant="ghost"
+   568→                      className="h-7 gap-1 px-2 text-[11px] hover:bg-background/60"
+   569→                      onClick={() => openAddPicker(slot)}
+   570→                    >
+   571→                      <Plus className="h-3 w-3" /> Tambah
+   572→                    </Button>
+   573→                    {items.length > 0 && (
+   574→                      <Button
+   575→                        size="sm"
+   576→                        variant="ghost"
+   577→                        className="h-7 gap-1 px-2 text-[11px] hover:bg-background/60"
+   578→                        onClick={() => setSaveMenuSlot(slot as MealSlot)}
+   579→                        title="Simpan menu ini sebagai template"
+   580→                      >
+   581→                        <Save className="h-3 w-3" /> Simpan Menu
+   582→                      </Button>
+   583→                    )}
+   584→                    <Button
+   585→                      size="sm"
+   586→                      variant="ghost"
+   587→                      className="h-7 gap-1 px-2 text-[11px] hover:bg-background/60"
+   588→                      onClick={() => setSavedMenuPickerSlot(slot as MealSlot)}
+   589→                      title="Pilih menu tersimpan"
+   590→                    >
+   591→                      <FolderOpen className="h-3 w-3" /> Pilih Menu
+   592→                    </Button>
+   593→                  </div>
+   594→                </div>
+   595→
+   596→                {/* Mini distribution bar */}
+   597→                <div className="h-1 w-full bg-muted/40">
+   598→                  <div
+   599→                    className={`h-full transition-all ${
+   600→                      Math.abs(deviation) <= 3
+   601→                        ? "bg-emerald-500"
+   602→                        : Math.abs(deviation) <= 8
+   603→                          ? "bg-amber-500"
+   604→                          : "bg-rose-500"
+   605→                    }`}
+   606→                    style={{ width: `${Math.min(100, (slotCal / Math.max(targetSlotCal, 1)) * 100)}%` }}
+   607→                  />
+   608→                </div>
+   609→
+   610→                {/* Items list */}
+   611→                {items.length === 0 ? (
+   612→                  <div className="flex items-center justify-between px-3 py-3 text-xs text-muted-foreground">
+   613→                    <span>Belum ada menu untuk waktu ini</span>
+   614→                    <Button
+   615→                      size="sm"
+   616→                      variant="outline"
+   617→                      className="h-7 gap-1 text-[11px]"
+   618→                      onClick={() => openAddPicker(slot)}
+   619→                    >
+   620→                      <Plus className="h-3 w-3" /> Tambah Makanan
+   621→                    </Button>
+   622→                  </div>
+   623→                ) : (
+   624→                  <div className="divide-y divide-border/40">
+   625→                    {items.map((item: any) => (
+   626→                      <div
+   627→                        key={item.id}
+   628→                        className="group flex items-center justify-between gap-2 px-3 py-2"
+   629→                      >
+   630→                        <div className="min-w-0 flex-1">
+   631→                          <p className="truncate text-sm font-medium text-foreground">
+   632→                            {item.food.name}
+   633→                          </p>
+   634→                          <p className="text-[11px] text-muted-foreground">
+   635→                            {item.amount}g
+   636→                            {item.food.urt ? ` · URT: ${item.food.urt}` : ""}
+   637→                          </p>
+   638→                        </div>
+   639→                        <div className="flex shrink-0 items-center gap-3 text-[11px]">
+   640→                          <span className="text-rose-500">P {Math.round(item.protein)}g</span>
+   641→                          <span className="text-amber-500">K {Math.round(item.carb)}g</span>
+   642→                          <span className="text-violet-500">L {Math.round(item.fat)}g</span>
+   643→                          <span className="font-bold text-primary">{Math.round(item.cal)}</span>
+   644→                          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+   645→                            <Button
+   646→                              size="icon"
+   647→                              variant="ghost"
+   648→                              className="h-6 w-6"
+   649→                              onClick={() => openReplacePicker(item)}
+   650→                              title="Ganti makanan"
+   651→                            >
+   652→                              <Pencil className="h-3 w-3" />
+   653→                            </Button>
+   654→                            <Button
+   655→                              size="icon"
+   656→                              variant="ghost"
+   657→                              className="h-6 w-6 text-rose-500 hover:text-rose-600"
+   658→                              onClick={() => handleDelete(item)}
+   659→                              title="Hapus"
+   660→                              disabled={deleteMut.isPending}
+   661→                            >
+   662→                              <Trash2 className="h-3 w-3" />
+   663→                            </Button>
+   664→                          </div>
+   665→                        </div>
+   666→                      </div>
+   667→                    ))}
+   668→                  </div>
+   669→                )}
+   670→              </div>
+   671→            );
+   672→          })}
+   673→        </div>
+   674→      </SectionCard>
+   675→
+   676→      {/* Food Picker Dialog */}
+   677→      <FoodPickerDialog
+   678→        open={pickerOpen}
+   679→        onOpenChange={setPickerOpen}
+   680→        slot={pickerSlot}
+   681→        slotLabel={SLOT_LABELS[pickerSlot]}
+   682→        targetPct={SLOT_TARGET_PCT[pickerSlot]}
+   683→        targetCal={Math.round(plan.targetCal * (SLOT_TARGET_PCT[pickerSlot] / 100))}
+   684→        editingItem={editingItem}
+   685→        onAdd={async (foodId, amount) => {
+   686→          try {
+   687→            await addMut.mutateAsync({ slot: pickerSlot, foodId, amount });
+   688→            toast.success(`Menu ditambahkan ke ${SLOT_LABELS[pickerSlot]}`);
+   689→            setPickerOpen(false);
+   690→          } catch (e: any) {
+   691→            toast.error(e.message || "Gagal menambah menu");
+   692→          }
+   693→        }}
+   694→        onReplace={async (foodId, amount) => {
+   695→          if (!editingItem) return;
+   696→          try {
+   697→            await updateMut.mutateAsync({
+   698→              itemId: editingItem.id,
+   699→              foodId,
+   700→              amount,
+   701→            });
+   702→            toast.success("Menu diganti");
+   703→            setPickerOpen(false);
+   704→            setEditingItem(null);
+   705→          } catch (e: any) {
+   706→            toast.error(e.message || "Gagal mengganti menu");
+   707→          }
+   708→        }}
+   709→      />
+   710→
+   711→      {/* Save Menu Dialog */}
+   712→      {saveMenuSlot && (
+   713→        <SaveMenuDialog
+   714→          slot={saveMenuSlot}
+   715→          items={itemsBySlot[saveMenuSlot] || []}
+   716→          patientId={plan.patientId}
+   717→          onClose={() => setSaveMenuSlot(null)}
+   718→          onSave={async (name, notes) => {
+   719→            const slotItems = itemsBySlot[saveMenuSlot] || [];
+   720→            const itemsData = slotItems.map((i: any) => ({
+   721→              foodId: i.foodId,
+   722→              amount: i.amount,
+   723→              foodName: i.food.name,
+   724→              urt: i.food.urt,
+   725→              cal: i.cal,
+   726→              protein: i.protein,
+   727→              fat: i.fat,
+   728→              carb: i.carb,
+   729→              fiber: i.fiber,
+   730→              sodium: i.sodium,
+   731→              potassium: (i.food.potassium || 0) * (i.amount / 100),
+   732→            }));
+   733→            try {
+   734→              await createSavedMenuMut.mutateAsync({
+   735→                patientId: plan.patientId,
+   736→                name,
+   737→                category: saveMenuSlot,
+   738→                notes,
+   739→                items: itemsData,
+   740→              });
+   741→              toast.success(`Menu "${name}" disimpan ke Saved Meal Library`);
+   742→              setSaveMenuSlot(null);
+   743→            } catch (e: any) {
+   744→              toast.error(e.message || "Gagal menyimpan menu");
+   745→            }
+   746→          }}
+   747→        />
+   748→      )}
+   749→
+   750→      {/* Saved Menu Picker Dialog */}
+   751→      {savedMenuPickerSlot && (
+   752→        <SavedMenuPickerDialog
+   753→          slot={savedMenuPickerSlot}
+   754→          patientId={plan.patientId}
+   755→          onClose={() => setSavedMenuPickerSlot(null)}
+   756→          onSelect={async (menu: any) => {
+   757→            // First delete existing items in this slot, then add the saved menu items
+   758→            const existingItems = itemsBySlot[savedMenuPickerSlot] || [];
+   759→            for (const item of existingItems) {
+   760→              await deleteMut.mutateAsync(item.id);
+   761→            }
+   762→            // Now add each saved menu item
+   763→            for (const item of menu.items) {
+   764→              await addMut.mutateAsync({
+   765→                slot: savedMenuPickerSlot,
+   766→                foodId: item.foodId,
+   767→                amount: item.amount,
+   768→              });
+   769→            }
+   770→            // Mark menu as used
+   771→            await markSavedMenuUsedMut.mutateAsync(menu.id);
+   772→            toast.success(`Menu "${menu.name}" dimuat ke ${SLOT_LABELS[savedMenuPickerSlot]}`);
+   773→            setSavedMenuPickerSlot(null);
+   774→          }}
+   775→        />
+   776→      )}
+   777→
+   778→      {/* Save All Menus Dialog — saves as 1 complete meal plan */}
+   779→      {saveAllOpen && (
+   780→        <SaveAllMenusDialog
+   781→          plan={plan}
+   782→          itemsBySlot={itemsBySlot}
+   783→          onClose={() => setSaveAllOpen(false)}
+   784→          onSaveAll={async (name, notes) => {
+   785→            const slots = Object.keys(SLOT_LABELS) as MealSlot[];
+   786→            const allItems: any[] = [];
+   787→            for (const slot of slots) {
+   788→              const slotItems = itemsBySlot[slot] || [];
+   789→              for (const i of slotItems) {
+   790→                allItems.push({
+   791→                  slot,
+   792→                  foodId: i.foodId,
+   793→                  amount: i.amount,
+   794→                  foodName: i.food.name,
+   795→                  urt: i.food.urt,
+   796→                  cal: i.cal,
+   797→                  protein: i.protein,
+   798→                  fat: i.fat,
+   799→                  carb: i.carb,
+   800→                  fiber: i.fiber,
+   801→                  sodium: i.sodium,
+   802→                  potassium: (i.food.potassium || 0) * (i.amount / 100),
+   803→                });
+   804→              }
+   805→            }
+   806→            if (allItems.length === 0) {
+   807→              toast.error("Tidak ada menu untuk disimpan");
+   808→              return;
+   809→            }
+   810→            try {
+   811→              await createSavedMealPlanMut.mutateAsync({
+   812→                patientId: plan.patientId,
+   813→                name,
+   814→                description: `${allItems.length} bahan · ${slots.filter((s) => (itemsBySlot[s] || []).length > 0).length} waktu makan`,
+   815→                notes,
+   816→                items: allItems,
+   817→              });
+   818→              toast.success(`Meal Plan "${name}" tersimpan ke Saved Meal Library`);
+   819→              setSaveAllOpen(false);
+   820→            } catch (e: any) {
+   821→              toast.error(e.message || "Gagal menyimpan meal plan");
+   822→            }
+   823→          }}
+   824→        />
+   825→      )}
+   826→    </div>
+   827→  );
+   828→}
+   829→
+   830→// ---------------------------------------------------------------------
+   831→// Food Picker Dialog — used for both Add & Replace
+   832→// ---------------------------------------------------------------------
+   833→function FoodPickerDialog({
+   834→  open,
+   835→  onOpenChange,
+   836→  slot,
+   837→  slotLabel,
+   838→  targetPct,
+   839→  targetCal,
+   840→  editingItem,
+   841→  onAdd,
+   842→  onReplace,
+   843→}: {
+   844→  open: boolean;
+   845→  onOpenChange: (o: boolean) => void;
+   846→  slot: MealSlot;
+   847→  slotLabel: string;
+   848→  targetPct: number;
+   849→  targetCal: number;
+   850→  editingItem: any | null;
+   851→  onAdd: (foodId: string, amount: number) => void;
+   852→  onReplace: (foodId: string, amount: number) => void;
+   853→}) {
+   854→  const [search, setSearch] = React.useState("");
+   855→  const [debounced, setDebounced] = React.useState("");
+   856→  const [selectedFood, setSelectedFood] = React.useState<any | null>(null);
+   857→  const [amount, setAmount] = React.useState("100");
+   858→
+   859→  React.useEffect(() => {
+   860→    const t = setTimeout(() => setDebounced(search), 250);
+   861→    return () => clearTimeout(t);
+   862→  }, [search]);
+   863→
+   864→  // Pre-fill when replacing
+   865→  React.useEffect(() => {
+   866→    if (open && editingItem) {
+   867→      setSelectedFood(editingItem.food);
+   868→      setAmount(String(editingItem.amount));
+   869→      setSearch("");
+   870→    } else if (open) {
+   871→      setSelectedFood(null);
+   872→      setAmount("100");
+   873→      setSearch("");
+   874→    }
+   875→  }, [open, editingItem]);
+   876→
+   877→  const { data, isLoading } = useFoods({ q: debounced });
+   878→  const foods = data?.foods || [];
+   879→
+   880→  const isReplacing = !!editingItem;
+   881→  const [submitting, setSubmitting] = React.useState(false);
+   882→  const amountNum = Number(amount) || 0;
+   883→  const previewCal = selectedFood ? (selectedFood.energy * amountNum) / 100 : 0;
+   884→  const previewProtein = selectedFood ? (selectedFood.protein * amountNum) / 100 : 0;
+   885→  const previewCarb = selectedFood ? (selectedFood.carb * amountNum) / 100 : 0;
+   886→  const previewFat = selectedFood ? (selectedFood.fat * amountNum) / 100 : 0;
+   887→
+   888→  const submit = async () => {
+   889→    if (!selectedFood) {
+   890→      toast.error("Pilih bahan makanan terlebih dahulu");
+   891→      return;
+   892→    }
+   893→    if (amountNum < 1) {
+   894→      toast.error("Jumlah minimal 1 gram");
+   895→      return;
+   896→    }
+   897→    setSubmitting(true);
+   898→    try {
+   899→      if (isReplacing) {
+   900→        await onReplace(selectedFood.id, amountNum);
+   901→      } else {
+   902→        await onAdd(selectedFood.id, amountNum);
+   903→      }
+   904→    } finally {
+   905→      setSubmitting(false);
+   906→    }
+   907→  };
+   908→
+   909→  return (
+   910→    <Dialog open={open} onOpenChange={onOpenChange}>
+   911→      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]">
+   912→        <DialogHeader>
+   913→          <DialogTitle className="flex items-center gap-2">
+   914→            {isReplacing ? (
+   915→              <>
+   916→                <Pencil className="h-4 w-4 text-primary" /> Ganti Menu
+   917→              </>
+   918→            ) : (
+   919→              <>
+   920→                <Plus className="h-4 w-4 text-primary" /> Tambah Menu
+   921→              </>
+   922→            )}
+   923→            <Badge variant="secondary" className="text-[10px]">
+   924→              {slotLabel} · Target {targetPct}% ({targetCal} kcal)
+   925→            </Badge>
+   926→          </DialogTitle>
+   927→          <DialogDescription>
+   928→            Cari bahan dari database TKPI/DKBM. Nutrisi dihitung otomatis per gram.
+   929→          </DialogDescription>
+   930→        </DialogHeader>
+   931→
+   932→        <div className="space-y-3 py-1">
+   933→          {/* Search */}
+   934→          <div className="relative">
+   935→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   936→            <Input
+   937→              placeholder="Cari bahan makanan..."
+   938→              value={search}
+   939→              onChange={(e) => setSearch(e.target.value)}
+   940→              className="pl-9"
+   941→              autoFocus
+   942→            />
+   943→            {search && (
+   944→              <button
+   945→                onClick={() => setSearch("")}
+   946→                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   947→              >
+   948→                <X className="h-4 w-4" />
+   949→              </button>
+   950→            )}
+   951→          </div>
+   952→
+   953→          {/* Selected food preview */}
+   954→          {selectedFood && (
+   955→            <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-3">
+   956→              <div className="flex items-start justify-between gap-2">
+   957→                <div>
+   958→                  <p className="text-sm font-semibold text-foreground">
+   959→                    {selectedFood.name}
+   960→                  </p>
+   961→                  <p className="text-[11px] text-muted-foreground">
+   962→                    {selectedFood.category?.icon} {selectedFood.category?.name} · GI {selectedFood.gi || "—"}
+   963→                  </p>
+   964→                </div>
+   965→                <Button
+   966→                  size="icon"
+   967→                  variant="ghost"
+   968→                  className="h-6 w-6"
+   969→                  onClick={() => setSelectedFood(null)}
+   970→                >
+   971→                  <X className="h-3 w-3" />
+   972→                </Button>
+   973→              </div>
+   974→              <div className="mt-2 grid grid-cols-4 gap-1.5 text-center text-[11px]">
+   975→                <div className="rounded bg-primary/10 py-1">
+   976→                  <p className="font-bold text-primary">{Math.round(previewCal)}</p>
+   977→                  <p className="text-muted-foreground">kcal</p>
+   978→                </div>
+   979→                <div className="rounded bg-rose-500/10 py-1">
+   980→                  <p className="font-bold text-rose-600 dark:text-rose-400">{Math.round(previewProtein)}g</p>
+   981→                  <p className="text-muted-foreground">Protein</p>
+   982→                </div>
+   983→                <div className="rounded bg-amber-500/10 py-1">
+   984→                  <p className="font-bold text-amber-600 dark:text-amber-400">{Math.round(previewCarb)}g</p>
+   985→                  <p className="text-muted-foreground">Karbo</p>
+   986→                </div>
+   987→                <div className="rounded bg-violet-500/10 py-1">
+   988→                  <p className="font-bold text-violet-600 dark:text-violet-400">{Math.round(previewFat)}g</p>
+   989→                  <p className="text-muted-foreground">Lemak</p>
+   990→                </div>
+   991→              </div>
+   992→            </div>
+   993→          )}
+   994→
+   995→          {/* Food list */}
+   996→          <ScrollArea className="h-56 rounded-md border border-border">
+   997→            {isLoading ? (
+   998→              <div className="space-y-2 p-2">
+   999→                {Array.from({ length: 5 }).map((_, i) => (
+  1000→                  <Skeleton key={i} className="h-12 w-full" />
+  1001→                ))}
+  1002→              </div>
+  1003→            ) : foods.length === 0 ? (
+  1004→              <div className="flex h-full items-center justify-center p-4 text-center text-xs text-muted-foreground">
+  1005→                {debounced ? `Tidak ada hasil untuk "${debounced}"` : "Ketik untuk mencari bahan..."}
+  1006→              </div>
+  1007→            ) : (
+  1008→              <div className="divide-y divide-border/40">
+  1009→                {foods.map((f: any) => {
+  1010→                  const isSelected = selectedFood?.id === f.id;
+  1011→                  return (
+  1012→                    <button
+  1013→                      key={f.id}
+  1014→                      onClick={() => setSelectedFood(f)}
+  1015→                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40 ${
+  1016→                        isSelected ? "bg-primary/10" : ""
+  1017→                      }`}
+  1018→                    >
+  1019→                      <div className="min-w-0 flex-1">
+  1020→                        <p className="truncate text-sm font-medium text-foreground">
+  1021→                          {f.name}
+  1022→                        </p>
+  1023→                        <p className="text-[11px] text-muted-foreground">
+  1024→                          {f.category?.icon} {f.category?.name} · {Math.round(f.energy)} kcal/100g
+  1025→                          {f.urt ? ` · URT: ${f.urt}` : ""}
+  1026→                        </p>
+  1027→                      </div>
+  1028→                      <div className="flex shrink-0 gap-1.5 text-[10px]">
+  1029→                        <span className="text-rose-500">P{f.protein}</span>
+  1030→                        <span className="text-amber-500">K{f.carb}</span>
+  1031→                        <span className="text-violet-500">L{f.fat}</span>
+  1032→                      </div>
+  1033→                    </button>
+  1034→                  );
+  1035→                })}
+  1036→              </div>
+  1037→            )}
+  1038→          </ScrollArea>
+  1039→
+  1040→          {/* Amount input */}
+  1041→          <div className="flex items-end gap-3">
+  1042→            <div className="flex-1">
+  1043→              <Label className="text-xs">Jumlah (gram)</Label>
+  1044→              <Input
+  1045→                type="number"
+  1046→                value={amount}
+  1047→                onChange={(e) => setAmount(e.target.value)}
+  1048→                min={1}
+  1049→                max={1000}
+  1050→              />
+  1051→            </div>
+  1052→            {selectedFood?.urtGram && (
+  1053→              <Button
+  1054→                type="button"
+  1055→                variant="outline"
+  1056→                size="sm"
+  1057→                className="h-9"
+  1058→                onClick={() => setAmount(String(selectedFood.urtGram))}
+  1059→              >
+  1060→                Isi URT ({selectedFood.urtGram}g)
+  1061→              </Button>
+  1062→            )}
+  1063→          </div>
+  1064→        </div>
+  1065→
+  1066→        <DialogFooter>
+  1067→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1068→            Batal
+  1069→          </Button>
+  1070→          <Button
+  1071→            onClick={submit}
+  1072→            disabled={!selectedFood || submitting}
+  1073→          >
+  1074→            {submitting ? (
+  1075→              "Menyimpan..."
+  1076→            ) : isReplacing ? (
+  1077→              <>
+  1078→                <Pencil className="mr-2 h-4 w-4" /> Ganti Menu
+  1079→              </>
+  1080→            ) : (
+  1081→              <>
+  1082→                <Plus className="mr-2 h-4 w-4" /> Tambahkan
+  1083→              </>
+  1084→            )}
+  1085→          </Button>
+  1086→        </DialogFooter>
+  1087→      </DialogContent>
+  1088→    </Dialog>
+  1089→  );
+  1090→}
+  1091→
+  1092→// ---------------------------------------------------------------------
+  1093→// Clinical Context Banner — shows assessment-derived activity/stress
+  1094→// ---------------------------------------------------------------------
+  1095→function ClinicalContextBanner({ plan }: { plan: any }) {
+  1096→  const assessment = plan.patient?.assessments?.[0];
+  1097→  if (!assessment) return null;
+  1098→
+  1099→  const activityLabels: Record<string, string> = {
+  1100→    BED_REST: "Bed Rest",
+  1101→    VERY_LIGHT: "Sangat Ringan",
+  1102→    LIGHT: "Ringan",
+  1103→    MODERATE: "Sedang",
+  1104→    HEAVY: "Berat",
+  1105→  };
+  1106→  const stressLabels: Record<string, string> = {
+  1107→    NONE: "Tidak Ada",
+  1108→    MILD: "Ringan",
+  1109→    MODERATE: "Sedang",
+  1110→    SEVERE: "Berat",
+  1111→    VERY_SEVERE: "Sangat Berat",
+  1112→  };
+  1113→
+  1114→  // Determine activity source
+  1115→  let activitySource = "";
+  1116→  let activityValue = assessment.activity || "LIGHT";
+  1117→  if (assessment.activity) {
+  1118→    activitySource = "dari asesmen";
+  1119→  } else if (assessment.ecog) {
+  1120→    const ecogNum = Number(assessment.ecog);
+  1121→    activitySource = `dari ECOG ${assessment.ecog}`;
+  1122→  } else if (assessment.barthel != null) {
+  1123→    activitySource = `dari Barthel ${assessment.barthel}`;
+  1124→  }
+  1125→
+  1126→  const stressValue = assessment.stress || "NONE";
+  1127→  const stressSource = assessment.stress ? "dari asesmen" : "";
+  1128→
+  1129→  // Collect clinical flags
+  1130→  const flags: { label: string; color: string }[] = [];
+  1131→  if (assessment.must === "HIGH") flags.push({ label: "MUST: Risiko Tinggi", color: "rose" });
+  1132→  else if (assessment.must === "MEDIUM") flags.push({ label: "MUST: Risiko Sedang", color: "amber" });
+  1133→  if (assessment.sga === "C") flags.push({ label: "SGA: Malnutrisi Berat", color: "rose" });
+  1134→  else if (assessment.sga === "B") flags.push({ label: "SGA: Sedang", color: "amber" });
+  1135→  if (assessment.frailty === "FRAIL") flags.push({ label: "Frail", color: "rose" });
+  1136→  else if (assessment.frailty === "PREFRAIL") flags.push({ label: "Prefrail", color: "amber" });
+  1137→  if (assessment.fallRisk === "HIGH") flags.push({ label: "Fall Risk: Tinggi", color: "rose" });
+  1138→  else if (assessment.fallRisk === "MODERATE") flags.push({ label: "Fall Risk: Sedang", color: "amber" });
+  1139→  if (assessment.barthel != null && assessment.barthel < 60) flags.push({ label: "Barthel: Ketergantungan", color: "rose" });
+  1140→
+  1141→  const colorMap: Record<string, string> = {
+  1142→    rose: "border-rose-300 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400",
+  1143→    amber: "border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+  1144→    emerald: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400",
+  1145→  };
+  1146→
+  1147→  return (
+  1148→    <div className="rounded-lg border border-primary/30 bg-gradient-to-r from-primary/5 to-chart-2/5 p-3">
+  1149→      <div className="flex flex-wrap items-center gap-3">
+  1150→        <div className="flex items-center gap-1.5">
+  1151→          <Stethoscope className="h-4 w-4 text-primary" />
+  1152→          <span className="text-xs font-semibold text-foreground">Konteks Klinis:</span>
+  1153→        </div>
+  1154→
+  1155→        {/* Activity */}
+  1156→        <div className="flex items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 py-1">
+  1157→          <Activity className="h-3 w-3 text-teal-600 dark:text-teal-400" />
+  1158→          <span className="text-[11px] font-medium">
+  1159→            Aktivitas: {activityLabels[activityValue] || activityValue}
+  1160→          </span>
+  1161→          {activitySource && (
+  1162→            <span className="text-[9px] text-muted-foreground">({activitySource})</span>
+  1163→          )}
+  1164→        </div>
+  1165→
+  1166→        {/* Stress */}
+  1167→        {stressValue !== "NONE" && (
+  1168→          <div className="flex items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 py-1">
+  1169→            <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+  1170→            <span className="text-[11px] font-medium">
+  1171→              Stress: {stressLabels[stressValue] || stressValue}
+  1172→            </span>
+  1173→            {stressSource && (
+  1174→              <span className="text-[9px] text-muted-foreground">({stressSource})</span>
+  1175→            )}
+  1176→          </div>
+  1177→        )}
+  1178→
+  1179→        {/* Clinical flags */}
+  1180→        {flags.map((flag, i) => (
+  1181→          <span
+  1182→            key={i}
+  1183→            className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${colorMap[flag.color]}`}
+  1184→          >
+  1185→            {flag.label}
+  1186→          </span>
+  1187→        ))}
+  1188→
+  1189→        {/* Assessment date */}
+  1190→        <span className="ml-auto text-[10px] text-muted-foreground">
+  1191→          Asesmen: {new Date(assessment.recordedAt).toLocaleDateString("id-ID", {
+  1192→            day: "numeric",
+  1193→            month: "short",
+  1194→            year: "numeric",
+  1195→          })}
+  1196→        </span>
+  1197→      </div>
+  1198→    </div>
+  1199→  );
+  1200→}
+  1201→
+  1202→function NutritionCompare({
+  1203→  label,
+  1204→  actual,
+  1205→  target,
+  1206→  unit,
+  1207→  met,
+  1208→  inverted,
+  1209→}: {
+  1210→  label: string;
+  1211→  actual: number;
+  1212→  target: number;
+  1213→  unit: string;
+  1214→  met?: boolean;
+  1215→  inverted?: boolean;
+  1216→}) {
+  1217→  const pct = target > 0 ? Math.min(100, (actual / target) * 100) : 0;
+  1218→  const good = inverted ? actual <= target : pct >= 85;
+  1219→  return (
+  1220→    <div className="rounded-lg border border-border/60 p-3">
+  1221→      <div className="mb-1.5 flex items-center justify-between">
+  1222→        <span className="text-xs font-medium text-foreground">{label}</span>
+  1223→        {met !== undefined && (
+  1224→          <Badge
+  1225→            variant="outline"
+  1226→            className={`text-[10px] ${
+  1227→              good
+  1228→                ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950"
+  1229→                : "border-rose-300 bg-rose-50 text-rose-700 dark:bg-rose-950"
+  1230→            }`}
+  1231→          >
+  1232→            {good ? "Tercapai" : "Belum"}
+  1233→          </Badge>
+  1234→        )}
+  1235→      </div>
+  1236→      <div className="mb-1.5 flex items-baseline justify-between">
+  1237→        <span className="text-lg font-bold cl-stat-num text-foreground">
+  1238→          {Math.round(actual)}
+  1239→          <span className="ml-0.5 text-xs font-normal text-muted-foreground">{unit}</span>
+  1240→        </span>
+  1241→        <span className="text-xs text-muted-foreground">
+  1242→          / {Math.round(target)} {unit}
+  1243→        </span>
+  1244→      </div>
+  1245→      <Progress
+  1246→        value={pct}
+  1247→        className={`h-1.5 ${good ? "" : "[&>div]:bg-rose-500"}`}
+  1248→      />
+  1249→    </div>
+  1250→  );
+  1251→}
+  1252→
+  1253→// ---------------------------------------------------------------------
+  1254→// Save Menu Dialog — save current slot items as a named template
+  1255→// ---------------------------------------------------------------------
+  1256→function SaveMenuDialog({
+  1257→  slot,
+  1258→  items,
+  1259→  patientId,
+  1260→  onClose,
+  1261→  onSave,
+  1262→}: {
+  1263→  slot: MealSlot;
+  1264→  items: any[];
+  1265→  patientId: string;
+  1266→  onClose: () => void;
+  1267→  onSave: (name: string, notes: string) => void;
+  1268→}) {
+  1269→  const [name, setName] = React.useState("");
+  1270→  const [notes, setNotes] = React.useState("");
+  1271→
+  1272→  const totalCal = items.reduce((s, i) => s + i.cal, 0);
+  1273→  const totalProtein = items.reduce((s, i) => s + i.protein, 0);
+  1274→
+  1275→  return (
+  1276→    <Dialog open onOpenChange={(o) => !o && onClose()}>
+  1277→      <DialogContent className="sm:max-w-[440px]">
+  1278→        <DialogHeader>
+  1279→          <DialogTitle className="flex items-center gap-2">
+  1280→            <Save className="h-4 w-4 text-primary" />
+  1281→            Simpan Menu {SLOT_LABELS[slot]}
+  1282→          </DialogTitle>
+  1283→          <DialogDescription>
+  1284→            Simpan {items.length} bahan sebagai template yang dapat digunakan ulang.
+  1285→          </DialogDescription>
+  1286→        </DialogHeader>
+  1287→
+  1288→        <div className="space-y-3">
+  1289→          {/* Preview */}
+  1290→          <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+  1291→            <div className="flex items-center justify-between text-xs">
+  1292→              <span className="text-muted-foreground">{items.length} bahan</span>
+  1293→              <span className="font-semibold text-foreground">
+  1294→                {Math.round(totalCal)} kcal · {Math.round(totalProtein)}g protein
+  1295→              </span>
+  1296→            </div>
+  1297→          </div>
+  1298→
+  1299→          <div>
+  1300→            <Label className="text-xs">Nama Menu</Label>
+  1301→            <Input
+  1302→              value={name}
+  1303→              onChange={(e) => setName(e.target.value)}
+  1304→              placeholder={`Sarapan Diabetes ${Math.round(totalCal)} kkal`}
+  1305→              autoFocus
+  1306→            />
+  1307→          </div>
+  1308→
+  1309→          <div>
+  1310→            <Label className="text-xs">Catatan (opsional)</Label>
+  1311→            <Input
+  1312→              value={notes}
+  1313→              onChange={(e) => setNotes(e.target.value)}
+  1314→              placeholder="Contoh: Menu tinggi serat untuk DM"
+  1315→            />
+  1316→          </div>
+  1317→        </div>
+  1318→
+  1319→        <DialogFooter>
+  1320→          <Button variant="outline" onClick={onClose}>Batal</Button>
+  1321→          <Button
+  1322→            onClick={() => {
+  1323→              if (!name.trim()) {
+  1324→                toast.error("Nama menu wajib diisi");
+  1325→                return;
+  1326→              }
+  1327→              onSave(name.trim(), notes);
+  1328→            }}
+  1329→          >
+  1330→            <Save className="mr-2 h-4 w-4" /> Simpan
+  1331→          </Button>
+  1332→        </DialogFooter>
+  1333→      </DialogContent>
+  1334→    </Dialog>
+  1335→  );
+  1336→}
+  1337→
+  1338→// ---------------------------------------------------------------------
+  1339→// Saved Menu Picker Dialog — search and pick a saved menu to load
+  1340→// ---------------------------------------------------------------------
+  1341→function SavedMenuPickerDialog({
+  1342→  slot,
+  1343→  patientId,
+  1344→  onClose,
+  1345→  onSelect,
+  1346→}: {
+  1347→  slot: MealSlot;
+  1348→  patientId: string;
+  1349→  onClose: () => void;
+  1350→  onSelect: (menu: any) => void;
+  1351→}) {
+  1352→  const [search, setSearch] = React.useState("");
+  1353→  const [debounced, setDebounced] = React.useState("");
+  1354→
+  1355→  React.useEffect(() => {
+  1356→    const t = setTimeout(() => setDebounced(search), 250);
+  1357→    return () => clearTimeout(t);
+  1358→  }, [search]);
+  1359→
+  1360→  const { data: menus, isLoading } = useSavedMenus({
+  1361→    patientId,
+  1362→    category: slot,
+  1363→    q: debounced || undefined,
+  1364→  });
+  1365→
+  1366→  const filtered = (menus || []).filter((m: any) =>
+  1367→    !debounced || m.name.toLowerCase().includes(debounced.toLowerCase()),
+  1368→  );
+  1369→
+  1370→  return (
+  1371→    <Dialog open onOpenChange={(o) => !o && onClose()}>
+  1372→      <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-[520px]">
+  1373→        <DialogHeader>
+  1374→          <DialogTitle className="flex items-center gap-2">
+  1375→            <FolderOpen className="h-4 w-4 text-primary" />
+  1376→            Pilih Menu Tersimpan — {SLOT_LABELS[slot]}
+  1377→          </DialogTitle>
+  1378→          <DialogDescription>
+  1379→            Cari dan pilih template menu untuk dimuat ke waktu makan ini.
+  1380→          </DialogDescription>
+  1381→        </DialogHeader>
+  1382→
+  1383→        <div className="space-y-3">
+  1384→          <div className="relative">
+  1385→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1386→            <Input
+  1387→              placeholder="Cari nama menu... (contoh: Nasi, Sarapan Diabetes)"
+  1388→              value={search}
+  1389→              onChange={(e) => setSearch(e.target.value)}
+  1390→              className="pl-9"
+  1391→              autoFocus
+  1392→            />
+  1393→          </div>
+  1394→
+  1395→          <ScrollArea className="max-h-72 rounded-md border border-border">
+  1396→            {isLoading ? (
+  1397→              <div className="p-3 text-center text-xs text-muted-foreground">Memuat...</div>
+  1398→            ) : filtered.length === 0 ? (
+  1399→              <div className="p-6 text-center text-xs text-muted-foreground">
+  1400→                {debounced ? `Tidak ada hasil untuk "${debounced}"` : "Belum ada menu tersimpan untuk kategori ini"}
+  1401→              </div>
+  1402→            ) : (
+  1403→              <div className="divide-y divide-border/40">
+  1404→                {filtered.map((menu: any) => (
+  1405→                  <button
+  1406→                    key={menu.id}
+  1407→                    onClick={() => onSelect(menu)}
+  1408→                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
+  1409→                  >
+  1410→                    <div className="min-w-0 flex-1">
+  1411→                      <p className="truncate text-sm font-medium text-foreground">{menu.name}</p>
+  1412→                      <p className="text-[10px] text-muted-foreground">
+  1413→                        {menu.items.length} bahan · {Math.round(menu.totalCal)} kcal · P{Math.round(menu.totalProtein)}g
+  1414→                        {menu.useCount > 0 && ` · dipakai ${menu.useCount}x`}
+  1415→                      </p>
+  1416→                    </div>
+  1417→                    <FolderOpen className="h-4 w-4 shrink-0 text-primary" />
+  1418→                  </button>
+  1419→                ))}
+  1420→              </div>
+  1421→            )}
+  1422→          </ScrollArea>
+  1423→        </div>
+  1424→
+  1425→        <DialogFooter>
+  1426→          <Button variant="outline" onClick={onClose}>Batal</Button>
+  1427→        </DialogFooter>
+  1428→      </DialogContent>
+  1429→    </Dialog>
+  1430→  );
+  1431→}
+  1432→
+  1433→// ---------------------------------------------------------------------
+  1434→// Save All Menus Dialog — save all 6 slots at once
+  1435→// ---------------------------------------------------------------------
+  1436→function SaveAllMenusDialog({
+  1437→  plan,
+  1438→  itemsBySlot,
+  1439→  onClose,
+  1440→  onSaveAll,
+  1441→}: {
+  1442→  plan: any;
+  1443→  itemsBySlot: Record<string, any[]>;
+  1444→  onClose: () => void;
+  1445→  onSaveAll: (name: string, notes: string) => void;
+  1446→}) {
+  1447→  const [name, setName] = React.useState("");
+  1448→  const [notes, setNotes] = React.useState("");
+  1449→  const [submitting, setSubmitting] = React.useState(false);
+  1450→
+  1451→  const slots = Object.keys(SLOT_LABELS) as MealSlot[];
+  1452→  const slotSummaries = slots.map((slot) => {
+  1453→    const items = itemsBySlot[slot] || [];
+  1454→    const cal = items.reduce((s, i) => s + i.cal, 0);
+  1455→    const protein = items.reduce((s, i) => s + i.protein, 0);
+  1456→    return { slot, label: SLOT_LABELS[slot], itemCount: items.length, cal: Math.round(cal), protein: Math.round(protein) };
+  1457→  });
+  1458→  const totalItems = slotSummaries.reduce((s, x) => s + x.itemCount, 0);
+  1459→  const totalCal = slotSummaries.reduce((s, x) => s + x.cal, 0);
+  1460→  const slotsWithItems = slotSummaries.filter((x) => x.itemCount > 0).length;
+  1461→
+  1462→  const handleSave = async () => {
+  1463→    if (!name.trim()) {
+  1464→      toast.error("Nama meal plan wajib diisi");
+  1465→      return;
+  1466→    }
+  1467→    setSubmitting(true);
+  1468→    try {
+  1469→      await onSaveAll(name.trim(), notes);
+  1470→    } finally {
+  1471→      setSubmitting(false);
+  1472→    }
+  1473→  };
+  1474→
+  1475→  return (
+  1476→    <Dialog open onOpenChange={(o) => !o && onClose()}>
+  1477→      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]">
+  1478→        <DialogHeader>
+  1479→          <DialogTitle className="flex items-center gap-2">
+  1480→            <Save className="h-5 w-5 text-primary" />
+  1481→            Simpan Meal Plan Utuh
+  1482→          </DialogTitle>
+  1483→          <DialogDescription>
+  1484→            Simpan 1 Meal Plan lengkap ({slotsWithItems} waktu makan, {totalItems} bahan, {totalCal} kcal) sebagai 1 template yang dapat digunakan ulang.
+  1485→          </DialogDescription>
+  1486→        </DialogHeader>
+  1487→
+  1488→        <div className="space-y-4">
+  1489→          {/* Summary of all slots */}
+  1490→          <div className="rounded-lg border border-border/60 overflow-hidden">
+  1491→            <div className="bg-muted/30 px-3 py-2">
+  1492→              <p className="text-xs font-semibold">Ringkasan Menu per Waktu Makan</p>
+  1493→            </div>
+  1494→            <div className="divide-y divide-border/40">
+  1495→              {slotSummaries.map((s) => (
+  1496→                <div
+  1497→                  key={s.slot}
+  1498→                  className={`flex items-center justify-between gap-2 px-3 py-2 ${
+  1499→                    s.itemCount === 0 ? "opacity-40" : ""
+  1500→                  }`}
+  1501→                >
+  1502→                  <div className="flex items-center gap-2">
+  1503→                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+  1504→                    <span className="text-sm font-medium text-foreground">{s.label}</span>
+  1505→                    {s.itemCount === 0 && (
+  1506→                      <Badge variant="outline" className="text-[9px]">Kosong</Badge>
+  1507→                    )}
+  1508→                  </div>
+  1509→                  <div className="flex items-center gap-3 text-xs">
+  1510→                    <span className="text-muted-foreground">{s.itemCount} bahan</span>
+  1511→                    {s.itemCount > 0 && (
+  1512→                      <>
+  1513→                        <span className="font-mono font-semibold text-primary">{s.cal} kcal</span>
+  1514→                        <span className="font-mono text-muted-foreground">P{s.protein}g</span>
+  1515→                      </>
+  1516→                    )}
+  1517→                  </div>
+  1518→                </div>
+  1519→              ))}
+  1520→            </div>
+  1521→            <div className="border-t-2 bg-muted/20 px-3 py-2">
+  1522→              <div className="flex items-center justify-between text-xs">
+  1523→                <span className="font-semibold text-foreground">Total Harian</span>
+  1524→                <span className="font-mono font-bold text-primary">
+  1525→                  {totalItems} bahan · {totalCal} kcal
+  1526→                </span>
+  1527→              </div>
+  1528→            </div>
+  1529→          </div>
+  1530→
+  1531→          {/* Name input */}
+  1532→          <div>
+  1533→            <Label className="text-xs">Nama Meal Plan</Label>
+  1534→            <Input
+  1535→              value={name}
+  1536→              onChange={(e) => setName(e.target.value)}
+  1537→              placeholder="Contoh: Diet DM Siti, Menu Hari Senin, Diet Hipertensi"
+  1538→              autoFocus
+  1539→            />
+  1540→            <p className="mt-1 text-[10px] text-muted-foreground">
+  1541→              Akan disimpan sebagai 1 meal plan utuh: "{name || "[Nama]"}" — seluruh 6 waktu makan dalam 1 record
+  1542→            </p>
+  1543→          </div>
+  1544→
+  1545→          {/* Notes */}
+  1546→          <div>
+  1547→            <Label className="text-xs">Catatan (opsional)</Label>
+  1548→            <Input
+  1549→              value={notes}
+  1550→              onChange={(e) => setNotes(e.target.value)}
+  1551→              placeholder="Contoh: Menu DM 1667 kcal, tinggi serat, rendah natrium"
+  1552→            />
+  1553→          </div>
+  1554→        </div>
+  1555→
+  1556→        <DialogFooter>
+  1557→          <Button variant="outline" onClick={onClose}>Batal</Button>
+  1558→          <Button onClick={handleSave} disabled={submitting || totalItems === 0}>
+  1559→            {submitting ? (
+  1560→              "Menyimpan..."
+  1561→            ) : (
+  1562→              <>
+  1563→                <Save className="mr-2 h-4 w-4" /> Simpan Meal Plan
+  1564→              </>
+  1565→            )}
+  1566→          </Button>
+  1567→        </DialogFooter>
+  1568→      </DialogContent>
+  1569→    </Dialog>
+  1570→  );
+  1571→}
+  1572→
