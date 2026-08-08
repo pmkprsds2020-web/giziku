@@ -263,7 +263,7 @@ export function useFoodChangeLogs(foodId: string | null) {
 }
 
 // ---------------- Calorie (API route — server-side clinical engine) ----------------
-export interface CalorieInput { gender: Gender; ageYears: number; heightCm: number; weightKg: number; activity: ActivityLevel; stress: StressLevel; diagnoses: DiagnosisType[]; isPregnant?: boolean; pregnancyTrimester?: number; isLactating?: boolean; }
+export interface CalorieInput { gender: Gender; ageYears: number; heightCm: number; weightKg: number; activity: ActivityLevel; stress: StressLevel; diagnoses: DiagnosisType[]; isPregnant?: boolean; pregnancyTrimester?: number; isLactating?: boolean; bouchardPalCategory?: "Sedentary" | "Low Active" | "Active" | "Very Active"; weightGoal?: "MAINTENANCE" | "WEIGHT_LOSS" | "WEIGHT_GAIN"; energyDeficitKcal?: number; }
 export function useComputeCalorie() {
   return useMutation({
     mutationFn: (input: CalorieInput) => jsonFetch<any>("/api/calorie", { method: "POST", body: JSON.stringify(input) }),

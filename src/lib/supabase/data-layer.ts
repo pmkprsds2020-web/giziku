@@ -1669,6 +1669,8 @@ export async function supabaseCreateExercisePlan(plan: any, items: any[]): Promi
       total_burned: plan.totalBurned ?? plan.total_burned ?? 0,
       target_burned: plan.targetBurned ?? plan.target_burned ?? 0,
       notes: plan.notes,
+      source_program_ids: plan.sourceProgramIds ?? plan.source_program_ids ?? [],
+      plan_details: plan.planDetails ?? plan.plan_details ?? {},
     })
     .select()
     .single();

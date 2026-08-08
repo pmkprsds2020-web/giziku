@@ -101,7 +101,40 @@ interface ExercisePlanDetails {
   patient_education?: string;
   weekly_progression?: string;
   contraindications?: string[];
+  // --- Exercise Target Engine audit trail (see src/lib/clinical/exercise-target.ts) ---
+  target_calorie?: number | null;
+  target_percentage?: number | null;
+  target_basis?: "BOUCHARD" | "ASSESSMENT_ACTIVITY" | "ECOG_BARTHEL" | "DEFAULT_CONSERVATIVE" | null;
+  activity_category?: string | null;
+  bouchard_pal?: number | null;
+  bouchard_category?: string | null;
+  bouchard_energy_expenditure?: number | null;
+  bouchard_assessment_date?: string | null;
+  who_moderate_minutes?: number | null;
+  clinical_adjustment?: number | null;
+  clinical_adjustments?: string[];
+  target_rationale?: string | null;
+  warnings?: string[];
+  actual_burned?: number | null;
+  achievement_percentage?: number | null;
+  achievement_status?: "ACHIEVED" | "PARTIALLY_ACHIEVED" | "SAFETY_LIMIT" | "BELOW_TARGET" | null;
+  safety_adjusted?: boolean;
+  force_prohibited?: boolean;
 }
+
+const TARGET_BASIS_LABELS: Record<string, string> = {
+  BOUCHARD: "Bouchard Activity Record",
+  ASSESSMENT_ACTIVITY: "Aktivitas Asesmen",
+  ECOG_BARTHEL: "ECOG/Barthel",
+  DEFAULT_CONSERVATIVE: "Estimasi Konservatif (data aktivitas belum lengkap)",
+};
+
+const ACHIEVEMENT_STATUS_LABELS: Record<string, string> = {
+  ACHIEVED: "Tercapai",
+  PARTIALLY_ACHIEVED: "Sebagian tercapai",
+  SAFETY_LIMIT: "Disesuaikan dengan batas keamanan pasien",
+  BELOW_TARGET: "Belum tercapai",
+};
 
 interface ExercisePlan {
   id: string;
@@ -312,13 +345,27 @@ function ExercisePlanDetail({ plan }: { plan: ExercisePlan }) {
   const totalDuration = items.reduce((s, i) => s + i.duration, 0);
   const totalBurned = plan.totalBurned || items.reduce((s, i) => s + i.caloriesBurned, 0);
   const targetBurned = plan.targetBurned || 0;
-  const burnPct = targetBurned > 0 ? Math.min(100, (totalBurned / targetBurned) * 100) : 0;
+  const details = plan.planDetails;
+  const burnPct = details?.achievement_percentage != null
+    ? details.achievement_percentage
+    : targetBurned > 0
+      ? Math.round((totalBurned / targetBurned) * 1000) / 10
+      : 0;
+  const achievementStatus = details?.achievement_status;
   const planDate = new Date(plan.date).toLocaleDateString("id-ID", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
+
+  const targetSublabel = details?.target_percentage != null
+    ? `${details.target_percentage}% kebutuhan energi${details.activity_category ? ` · ${details.activity_category}` : ""}`
+    : "Berdasarkan kebutuhan energi & tingkat aktivitas pasien";
+
+  const actualSublabel = achievementStatus === "SAFETY_LIMIT"
+    ? "Disesuaikan dengan batas keamanan pasien"
+    : `${Math.round(burnPct)}% dari target${achievementStatus ? ` · ${ACHIEVEMENT_STATUS_LABELS[achievementStatus] || ""}` : ""}`;
 
   return (
     <div className="space-y-4">
@@ -330,15 +377,15 @@ function ExercisePlanDetail({ plan }: { plan: ExercisePlan }) {
           unit="kcal"
           icon={TrendingUp}
           color="amber"
-          sublabel="20% kalori harian"
+          sublabel={targetSublabel}
         />
         <StatCard
           label="Aktual Burned"
           value={Math.round(totalBurned)}
           unit="kcal"
           icon={Flame}
-          color={burnPct >= 90 ? "emerald" : burnPct >= 60 ? "amber" : "rose"}
-          sublabel={`${Math.round(burnPct)}% dari target`}
+          color={achievementStatus === "SAFETY_LIMIT" ? "amber" : burnPct >= 90 ? "emerald" : burnPct >= 60 ? "amber" : "rose"}
+          sublabel={actualSublabel}
         />
         <StatCard
           label="Total Durasi"
@@ -357,6 +404,66 @@ function ExercisePlanDetail({ plan }: { plan: ExercisePlan }) {
           sublabel={planDate}
         />
       </div>
+
+      {/* Dasar Perhitungan — audit trail dari Exercise Target Engine */}
+      {details && (details.target_calorie || details.bouchard_pal != null || details.target_rationale) && (
+        <SectionCard
+          title="Dasar Perhitungan"
+          description="Bagaimana target & aktual latihan ini dihitung — transparan & dapat diaudit"
+        >
+          <div className="grid gap-x-6 gap-y-2 rounded-lg border border-border/60 bg-muted/30 p-4 text-sm sm:grid-cols-2">
+            {details.target_calorie != null && (
+              <div>
+                <span className="text-muted-foreground">Kebutuhan energi harian: </span>
+                <span className="font-medium text-foreground">{Math.round(details.target_calorie)} kcal/hari</span>
+              </div>
+            )}
+            {details.target_basis && (
+              <div>
+                <span className="text-muted-foreground">Basis perhitungan: </span>
+                <span className="font-medium text-foreground">{TARGET_BASIS_LABELS[details.target_basis] || details.target_basis}</span>
+              </div>
+            )}
+            {details.bouchard_pal != null && (
+              <div>
+                <span className="text-muted-foreground">Bouchard PAL: </span>
+                <span className="font-medium text-foreground">
+                  {details.bouchard_pal} {details.bouchard_category ? `(${details.bouchard_category})` : ""}
+                </span>
+              </div>
+            )}
+            {details.bouchard_energy_expenditure != null && (
+              <div>
+                <span className="text-muted-foreground">Bouchard Energy Expenditure: </span>
+                <span className="font-medium text-foreground">{Math.round(details.bouchard_energy_expenditure)} kcal/hari</span>
+              </div>
+            )}
+            {details.who_moderate_minutes != null && (
+              <div>
+                <span className="text-muted-foreground">Aktivitas moderat setara (WHO): </span>
+                <span className="font-medium text-foreground">{details.who_moderate_minutes} menit/minggu</span>
+              </div>
+            )}
+            {details.clinical_adjustment != null && details.clinical_adjustment < 1 && (
+              <div>
+                <span className="text-muted-foreground">Faktor penyesuaian keselamatan: </span>
+                <span className="font-medium text-amber-700 dark:text-amber-400">×{details.clinical_adjustment}</span>
+              </div>
+            )}
+            <div>
+              <span className="text-muted-foreground">Target latihan tambahan: </span>
+              <span className="font-semibold text-primary">{Math.round(targetBurned)} kcal/hari</span>
+            </div>
+          </div>
+          {details.clinical_adjustments && details.clinical_adjustments.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-muted-foreground">
+              {details.clinical_adjustments.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      )}
 
       {/* Warmup */}
       {plan.planDetails?.warmup && (

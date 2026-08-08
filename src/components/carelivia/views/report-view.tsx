@@ -23,6 +23,8 @@ import {
   ClipboardList,
   ShoppingCart,
   FlaskConical,
+  Footprints,
+  Dna,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +51,10 @@ import {
   useAssessments,
   useWeightRecords,
   useLabResults,
+  useBouchardAssessments,
 } from "@/hooks/use-carelivia";
+import { useGenomicReports, useGenomicReportDetail } from "@/hooks/use-nutrigenomic";
+import { BUCKET_LABELS, type BouchardCategory } from "@/lib/clinical/bouchard";
 import { LAB_CATEGORY_LABELS, LAB_STATUS_LABELS, type LabCategory } from "@/lib/clinical/lab-catalog";
 import { AIClinicalAssessmentDashboard } from "@/components/carelivia/ai-clinical-assessment";
 import { useCareLiviaStore } from "@/store/carelivia";
@@ -281,6 +286,18 @@ function ClinicalReport({ patient }: { patient: any }) {
   const { data: exercisePlans, isLoading: exerciseLoading } = useExercisePlans(patient.id);
   const { data: foodRecords, isLoading: foodRecordsLoading } = useFoodRecords(patient.id);
   const { data: labResults, isLoading: labLoading } = useLabResults(patient.id);
+  const { data: bouchardHistory, isLoading: bouchardLoading } = useBouchardAssessments(patient.id);
+  const { data: genomicReports, isLoading: genomicReportsLoading } = useGenomicReports(patient.id);
+
+  // Only the most recent ANALYZED report is shown in the clinical report —
+  // never diagnoses, never a placeholder if none exists (point #21/#22).
+  const latestAnalyzedGenomicReport = React.useMemo(() => {
+    if (!genomicReports || genomicReports.length === 0) return null;
+    return genomicReports.find((r: any) => r.status === "ANALYZED") || null;
+  }, [genomicReports]);
+  const { data: genomicDetail, isLoading: genomicDetailLoading } = useGenomicReportDetail(
+    latestAnalyzedGenomicReport?.id || null,
+  );
 
   // Latest result per test name, grouped by category — for the report table.
   const latestLabsByCategory = React.useMemo(() => {
@@ -300,6 +317,7 @@ function ClinicalReport({ patient }: { patient: any }) {
   const latestMealPlan = mealPlanView?.mealPlan || null;
   const latestExercisePlan = (exercisePlans || [])[0] || null;
   const latestAssessment = (assessments || [])[0] || null;
+  const latestBouchard = (bouchardHistory || [])[0] || null;
   const weightSummary = weightData?.summary || null;
   const latestWeightRecord = (weightData?.records || [])[weightData?.records?.length - 1 || 0] || null;
 
@@ -387,6 +405,10 @@ function ClinicalReport({ patient }: { patient: any }) {
   if (!exerciseLoading && !latestExercisePlan) missingItems.push("Rencana Latihan");
   if (!latestAssessment) missingItems.push("Asesmen Gizi & Fungsional");
   if (!labLoading && Object.keys(latestLabsByCategory).length === 0) missingItems.push("Hasil Laboratorium");
+  // Informational only — Bouchard & Nutrigenomic are NEVER mandatory and
+  // never block report generation (point #26 of the integration spec).
+  if (!bouchardLoading && !latestBouchard) missingItems.push("Bouchard Activity Record (opsional)");
+  if (!genomicReportsLoading && !latestAnalyzedGenomicReport) missingItems.push("Nutrigenomic AI (opsional)");
 
   const doctorName = user?.user_metadata?.name || (user?.email ? user.email.split("@")[0] : null);
 
@@ -973,7 +995,273 @@ function ClinicalReport({ patient }: { patient: any }) {
             </ReportSection>
           )}
 
-          {/* === 10. Shopping Planner === */}
+          {/* === 10. Bouchard Activity Record — hanya ditampilkan bila tersedia === */}
+          {bouchardLoading ? (
+            <ReportSection title="Bouchard Activity Record" icon={Footprints}>
+              <p className="text-sm text-muted-foreground">Memuat Bouchard Activity Record…</p>
+            </ReportSection>
+          ) : !latestBouchard ? (
+            <ReportSection title="Bouchard Activity Record" icon={Footprints}>
+              <p className="text-sm text-muted-foreground">Belum tersedia.</p>
+            </ReportSection>
+          ) : (
+            <ReportSection
+              title="Bouchard Activity Record"
+              icon={Footprints}
+              subtitle={`Tanggal ${new Date(latestBouchard.assessmentDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}`}
+            >
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Energy Expenditure" value={`${Math.round(latestBouchard.avgEnergyExpenditure)} kcal/hari`} />
+                <Metric label="MET" value={String(latestBouchard.avgMet)} />
+                <Metric label="PAL" value={String(latestBouchard.avgPal)} />
+                <Metric label="Kategori" value={latestBouchard.palCategory || "—"} />
+              </div>
+
+              {/* Distribusi aktivitas */}
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="py-1.5 pr-2">Aktivitas</th>
+                      <th className="px-2 text-right">Menit/hari</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {Object.entries(BUCKET_LABELS).map(([bucket, label]) => (
+                      <tr key={bucket}>
+                        <td className="py-1.5 pr-2 text-foreground">{label}</td>
+                        <td className="px-2 text-right tabular-nums font-medium text-primary">
+                          {Math.round((latestBouchard.minutesByBucket?.[bucket as BouchardCategory["bucket"]] ?? 0))} menit
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Status WHO */}
+              <div className="mt-3 rounded-md bg-muted/30 p-3 text-xs">
+                <p>
+                  <b>Aktivitas aerobik setara moderat:</b>{" "}
+                  {latestBouchard.whoStatus?.moderateVigorousMinutesPerWeek ?? 0} menit/minggu
+                </p>
+                {latestBouchard.whoStatus?.message && (
+                  <p className="mt-1 text-muted-foreground">{latestBouchard.whoStatus.message}</p>
+                )}
+              </div>
+
+              {/* Resume Analisis AI Bouchard — tidak pernah di-generate otomatis saat laporan dibuka */}
+              <div className="mt-3">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Resume Analisis AI Bouchard
+                </p>
+                {latestBouchard.aiSummary ? (
+                  <div className="space-y-2 rounded-md border border-border/60 p-3 text-xs leading-relaxed">
+                    <p className="text-foreground">{latestBouchard.aiSummary}</p>
+                    {latestBouchard.aiFindings?.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Temuan:</p>
+                        <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                          {latestBouchard.aiFindings.map((f: string, i: number) => (
+                            <li key={i}>{f}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {latestBouchard.aiRecommendations?.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Rekomendasi:</p>
+                        <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                          {latestBouchard.aiRecommendations.map((r: string, i: number) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {latestBouchard.aiRiskLevel && (
+                      <p>
+                        <b>Risiko:</b> {latestBouchard.aiRiskLevel}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Interpretasi AI Bouchard belum tersedia.</p>
+                )}
+              </div>
+            </ReportSection>
+          )}
+
+          {/* === 11. Resume Nutrigenomic AI — hanya bila status ANALYZED tersedia === */}
+          {genomicReportsLoading || (latestAnalyzedGenomicReport && genomicDetailLoading) ? (
+            <ReportSection title="Resume Nutrigenomic AI" icon={Dna}>
+              <p className="text-sm text-muted-foreground">Memuat Nutrigenomic AI…</p>
+            </ReportSection>
+          ) : !latestAnalyzedGenomicReport || !genomicDetail?.interpretation ? (
+            <ReportSection title="Resume Nutrigenomic AI" icon={Dna}>
+              <p className="text-sm text-muted-foreground">Belum tersedia.</p>
+            </ReportSection>
+          ) : (
+            <ReportSection
+              title="Resume Nutrigenomic AI"
+              icon={Dna}
+              subtitle={
+                latestAnalyzedGenomicReport.examDate
+                  ? `Pemeriksaan ${new Date(latestAnalyzedGenomicReport.examDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}`
+                  : undefined
+              }
+            >
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Laboratorium" value={latestAnalyzedGenomicReport.laboratoryName || "—"} />
+                <Metric label="Jumlah Gen" value={String(latestAnalyzedGenomicReport.totalGenes ?? genomicDetail.findings.length ?? 0)} />
+                <Metric label="Jumlah SNP" value={String(latestAnalyzedGenomicReport.totalSnps ?? 0)} />
+              </div>
+
+              {genomicDetail.interpretation.summary && (
+                <p className="mt-3 text-sm leading-relaxed text-foreground">{genomicDetail.interpretation.summary}</p>
+              )}
+
+              {genomicDetail.interpretation.riskSummary && Object.keys(genomicDetail.interpretation.riskSummary).length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ringkasan Risiko</p>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {Object.entries(genomicDetail.interpretation.riskSummary)
+                      .filter(([k, v]) => k !== "exercisePerformance" && v)
+                      .map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between rounded-md border border-border/50 px-2 py-1 text-xs">
+                          <span className="text-muted-foreground">{k}</span>
+                          <span className="font-medium text-foreground">{String(v)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.clinicalImplications?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Implikasi Klinis</p>
+                  <ul className="space-y-1 text-xs">
+                    {genomicDetail.interpretation.clinicalImplications.map((c: any, i: number) => (
+                      <li key={i} className="rounded-md border border-border/40 p-2">
+                        <span className="font-medium">{c.relatedDiagnosis}</span>
+                        {c.relatedGene && <span className="text-muted-foreground"> × {c.relatedGene}</span>}
+                        <p className="mt-0.5 text-muted-foreground">{c.implication}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.nutritionImplications && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Implikasi Nutrisi</p>
+                  <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                    {Object.entries({
+                      Makronutrien: genomicDetail.interpretation.nutritionImplications.macronutrients,
+                      Mikronutrien: genomicDetail.interpretation.nutritionImplications.micronutrients,
+                      Antioksidan: genomicDetail.interpretation.nutritionImplications.antioxidants,
+                      Fitonutrien: genomicDetail.interpretation.nutritionImplications.phytonutrients,
+                      Serat: genomicDetail.interpretation.nutritionImplications.fiber,
+                    })
+                      .filter(([, v]) => v)
+                      .map(([k, v]) => (
+                        <div key={k}>
+                          <p className="font-medium text-foreground">{k}</p>
+                          <p className="mt-0.5 text-muted-foreground">{v as string}</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.recommendedFoods?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Makanan yang Direkomendasikan</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {genomicDetail.interpretation.recommendedFoods.map((f: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="bg-emerald-500/10 text-[11px] text-emerald-700 dark:text-emerald-400">
+                        {f}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.restrictedFoods?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Makanan yang Perlu Dibatasi</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {genomicDetail.interpretation.restrictedFoods.map((f: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="bg-rose-500/10 text-[11px] text-rose-700 dark:text-rose-400">
+                        {f}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.interventionPriorities?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Prioritas Intervensi</p>
+                  <ol className="list-decimal space-y-1 pl-4 text-xs">
+                    {genomicDetail.interpretation.interventionPriorities.map((p: string, i: number) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.supplementation?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Suplementasi</p>
+                  <div className="space-y-1.5 text-xs">
+                    {genomicDetail.interpretation.supplementation.map((s: any, i: number) => (
+                      <div key={i} className="rounded-md border border-border/40 p-2">
+                        <span className="font-medium">{s.supplement}</span>
+                        {s.reasoning && <p className="mt-0.5 text-muted-foreground">{s.reasoning}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.exerciseRecommendations?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Rekomendasi Latihan</p>
+                  <div className="space-y-1.5 text-xs">
+                    {genomicDetail.interpretation.exerciseRecommendations.map((e: any, i: number) => (
+                      <div key={i} className="rounded-md border border-border/40 p-2">
+                        <p className="font-medium">{e.recommendation}</p>
+                        {e.reasoning && <p className="mt-0.5 text-muted-foreground">{e.reasoning}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {genomicDetail.interpretation.monitoringPlan?.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Monitoring</p>
+                  <div className="space-y-1 text-xs">
+                    {genomicDetail.interpretation.monitoringPlan.map((m: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between border-b border-border/30 pb-1 last:border-0">
+                        <span>{m.parameter}</span>
+                        <span className="text-muted-foreground">
+                          {m.intervalMonths ? `tiap ${m.intervalMonths} bulan` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-3 rounded-md bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                Interpretasi nutrigenomik merupakan informasi pendukung berbasis hasil pemeriksaan genetik dan bukti
+                yang tersedia, bukan diagnosis penyakit dan tidak menggantikan penilaian klinis dokter.
+              </p>
+            </ReportSection>
+          )}
+
+          {/* === 12. Shopping Planner === */}
           <ReportSection title="Shopping Planner" icon={ShoppingCart}>
             {!latestMealPlan ? (
               <p className="text-sm text-muted-foreground">Belum tersedia — memerlukan Meal Plan Aktif terlebih dahulu.</p>
@@ -1026,7 +1314,7 @@ function ClinicalReport({ patient }: { patient: any }) {
             )}
           </ReportSection>
 
-          {/* === 11. AI Evaluation — Clinical Decision Support System === */}
+          {/* === 13. AI Evaluation — Clinical Decision Support System === */}
           {/* Covers Rekomendasi Nutrisi, Target Terapi, Monitoring, Edukasi Pasien,
               Risiko/Komplikasi & Kesimpulan AI — reads the persisted evaluation,
               never auto-regenerates on report load. */}
@@ -1034,7 +1322,7 @@ function ClinicalReport({ patient }: { patient: any }) {
             <AIClinicalAssessmentDashboard patientId={patient.id} patientName={patient.name} />
           </ReportSection>
 
-          {/* === 12. Footer — signature + QR === */}
+          {/* === 14. Footer — signature + QR === */}
           <div className="mt-8 flex flex-col gap-6 border-t border-border pt-6 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex gap-8">
               <div>

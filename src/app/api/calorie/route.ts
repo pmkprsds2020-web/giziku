@@ -14,6 +14,9 @@ const CalorieSchema = z.object({
   isPregnant: z.boolean().optional().default(false),
   pregnancyTrimester: z.number().optional().default(0),
   isLactating: z.boolean().optional().default(false),
+  bouchardPalCategory: z.enum(["Sedentary", "Low Active", "Active", "Very Active"]).optional(),
+  weightGoal: z.enum(["MAINTENANCE", "WEIGHT_LOSS", "WEIGHT_GAIN"]).optional(),
+  energyDeficitKcal: z.number().min(0).max(750).optional(),
 });
 
 export async function POST(req: NextRequest) {

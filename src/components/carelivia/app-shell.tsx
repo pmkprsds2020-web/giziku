@@ -4,7 +4,33 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Moon, Sun, Menu, X, Stethoscope, HeartPulse, ChefHat, DollarSign, Database, User as UserIcon, LogOut, Settings, History, ChevronsLeft, ChevronsRight, Dna, Activity } from "lucide-react";
+import {
+  Moon,
+  Sun,
+  Menu,
+  X,
+  HeartPulse,
+  ChefHat,
+  DollarSign,
+  Database,
+  User as UserIcon,
+  LogOut,
+  Settings,
+  History,
+  ChevronsLeft,
+  ChevronsRight,
+  Dna,
+  Activity,
+  LayoutDashboard,
+  UsersRound,
+  Calculator,
+  Sparkles,
+  ClipboardList,
+  ShoppingCart,
+  FileText,
+  Footprints,
+  BookMarked,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -40,37 +66,43 @@ interface NavItem {
   short: string;
   icon: React.ComponentType<{ className?: string }>;
   desc: string;
-  group: "klinis" | "data" | "output";
+  group: "utama" | "penilaian" | "perencanaan" | "data" | "output";
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // Modul Klinis — mengikuti alur kerja: pasien → kebutuhan kalori → meal plan → asupan → riwayat → pustaka → olahraga
-  { key: "dashboard", label: "Dashboard", short: "Home", icon: HeartPulse, desc: "Ringkasan klinis & tren pasien", group: "klinis" },
-  { key: "patients", label: "Manajemen Pasien", short: "Pasien", icon: Stethoscope, desc: "Data pasien & asesmen gizi", group: "klinis" },
-  { key: "calorie", label: "Kalkulator Kalori", short: "Kalori", icon: Stethoscope, desc: "Formula CareLivia 11 langkah", group: "klinis" },
-  { key: "nutrigenomic", label: "Nutrigenomic AI", short: "Nutrigenomic", icon: Dna, desc: "Interpretasi genetik & precision nutrition", group: "klinis" },
-  { key: "meal-plan", label: "AI Meal Plan", short: "Meal Plan", icon: Stethoscope, desc: "Generator rencana makan AI", group: "klinis" },
-  { key: "food-record", label: "Catatan Asupan", short: "Asupan", icon: Stethoscope, desc: "Food record harian", group: "klinis" },
-  { key: "meal-plan-history", label: "Riwayat Meal Plan", short: "Riwayat", icon: History, desc: "Snapshot meal plan tersimpan — lihat/gunakan/hapus", group: "klinis" },
-  { key: "saved-menus", label: "Saved Meal Library", short: "Menu Tersimpan", icon: ChefHat, desc: "Template menu & perbandingan", group: "klinis" },
-  { key: "exercise", label: "Exercise Plan", short: "Olahraga", icon: Stethoscope, desc: "Rencana latihan terpersonalisasi", group: "klinis" },
-  { key: "bouchard", label: "Bouchard Activity Record", short: "BAR", icon: Activity, desc: "Physical activity log 3 hari — Energy Expenditure, MET & PAL", group: "klinis" },
+  // UTAMA
+  { key: "dashboard", label: "Dashboard", short: "Home", icon: LayoutDashboard, desc: "Ringkasan klinis & tren pasien", group: "utama" },
+  { key: "patients", label: "Manajemen Pasien", short: "Pasien", icon: UsersRound, desc: "Data pasien & asesmen gizi", group: "utama" },
 
-  // Basis Data & Asupan
-  { key: "foods", label: "Database Bahan Makanan", short: "Bahan Makanan", icon: Stethoscope, desc: "TKPI/DKBM 73 bahan", group: "data" },
+  // PENILAIAN KLINIS
+  { key: "calorie", label: "Kalkulator Kalori", short: "Kalori", icon: Calculator, desc: "Formula CareLivia 11 langkah", group: "penilaian" },
+  { key: "nutrigenomic", label: "Nutrigenomic AI", short: "Nutrigenomic", icon: Dna, desc: "Interpretasi genetik & precision nutrition", group: "penilaian" },
+  { key: "bouchard", label: "Bouchard Activity Record", short: "BAR", icon: Footprints, desc: "Physical activity log 3 hari — Energy Expenditure, MET & PAL", group: "penilaian" },
+
+  // PERENCANAAN
+  { key: "meal-plan", label: "AI Meal Plan", short: "Meal Plan", icon: Sparkles, desc: "Generator rencana makan AI", group: "perencanaan" },
+  { key: "exercise", label: "Exercise Plan", short: "Olahraga", icon: Activity, desc: "Rencana latihan terpersonalisasi", group: "perencanaan" },
+  { key: "food-record", label: "Catatan Asupan", short: "Asupan", icon: ClipboardList, desc: "Food record harian", group: "perencanaan" },
+  { key: "saved-menus", label: "Saved Meal Library", short: "Menu Tersimpan", icon: BookMarked, desc: "Template menu & perbandingan", group: "perencanaan" },
+
+  // DATA & DATABASE
+  { key: "foods", label: "Database Bahan Makanan", short: "Bahan Makanan", icon: Database, desc: "TKPI/DKBM 73 bahan", group: "data" },
   { key: "recipes", label: "Resep & Menu", short: "Resep", icon: ChefHat, desc: "Manajemen resep & komposisi", group: "data" },
   { key: "price-management", label: "Manajemen Harga", short: "Harga", icon: DollarSign, desc: "Kelola harga bahan makanan", group: "data" },
 
-  // Output & Laporan (Database Browser dihapus — bersifat debugging/developer)
-  { key: "shopping", label: "Shopping Planner", short: "Belanja", icon: Stethoscope, desc: "Daftar belanja & estimasi harga", group: "output" },
-  { key: "supabase-monitor", label: "Database Monitor", short: "Monitor", icon: Database, desc: "Status koneksi & kesehatan database", group: "output" },
-  { key: "report", label: "Laporan Klinis PDF", short: "Laporan", icon: Stethoscope, desc: "Laporan nutrisi profesional", group: "output" },
+  // LAPORAN & OUTPUT (Database Browser dihapus — bersifat debugging/developer)
+  { key: "meal-plan-history", label: "Riwayat Meal Plan", short: "Riwayat", icon: History, desc: "Snapshot meal plan tersimpan — lihat/gunakan/hapus", group: "output" },
+  { key: "shopping", label: "Shopping Planner", short: "Belanja", icon: ShoppingCart, desc: "Daftar belanja & estimasi harga", group: "output" },
+  { key: "supabase-monitor", label: "Database Monitor", short: "Monitor", icon: Activity, desc: "Status koneksi & kesehatan database", group: "output" },
+  { key: "report", label: "Laporan Klinis PDF", short: "Laporan", icon: FileText, desc: "Laporan nutrisi profesional", group: "output" },
 ];
 
 const GROUP_LABELS: Record<NavItem["group"], string> = {
-  klinis: "Modul Klinis",
-  data: "Basis Data & Asupan",
-  output: "Output & Laporan",
+  utama: "Utama",
+  penilaian: "Penilaian Klinis",
+  perencanaan: "Perencanaan",
+  data: "Data & Database",
+  output: "Laporan & Output",
 };
 
 function NavButton({ item, collapsed = false }: { item: NavItem; collapsed?: boolean }) {
@@ -82,38 +114,28 @@ function NavButton({ item, collapsed = false }: { item: NavItem; collapsed?: boo
     <button
       onClick={() => setActiveView(item.key)}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors duration-200",
-        collapsed && "justify-center px-0",
+        "group relative flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-left text-[13px] font-medium leading-none transition-colors duration-150 ease-out",
+        collapsed && "h-11 w-11 justify-center px-0",
         active
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
+          ? "bg-primary/[0.08] font-semibold text-primary"
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       )}
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? item.label : undefined}
     >
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
-          active
-            ? "bg-primary-foreground/15 text-primary-foreground"
-            : "bg-sidebar-accent/60 text-sidebar-foreground/80 group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground",
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      {!collapsed && (
-        <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate">{item.label}</span>
-          <span
-            className={cn(
-              "truncate text-[11px] font-normal",
-              active ? "text-primary-foreground/70" : "text-muted-foreground",
-            )}
-          >
-            {item.desc}
-          </span>
-        </span>
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-primary"
+        />
       )}
+      <Icon
+        className={cn(
+          "h-[18px] w-[18px] shrink-0 stroke-[1.8]",
+          active ? "text-primary" : "text-sidebar-foreground/55 group-hover:text-sidebar-foreground",
+        )}
+      />
+      {!collapsed && <span className="truncate">{item.label}</span>}
     </button>
   );
 
@@ -137,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
-  const groups: NavItem["group"][] = ["klinis", "data", "output"];
+  const groups: NavItem["group"][] = ["utama", "penilaian", "perencanaan", "data", "output"];
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -146,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           className={cn(
             "relative hidden shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:flex lg:flex-col",
-            sidebarCollapsed ? "w-[76px]" : "w-72",
+            sidebarCollapsed ? "w-[72px]" : "w-[260px]",
           )}
         >
           <SidebarContent groups={groups} collapsed={sidebarCollapsed} />
@@ -219,17 +241,17 @@ function SidebarContent({
       >
         <Brand collapsed={collapsed} />
       </div>
-      {/* space-y-8 gives clearer visual separation between the three menu groups */}
+      {/* space-y-6 separates the five clinical-workflow menu groups */}
       <nav
         className={cn(
-          "flex-1 space-y-8 overflow-y-auto py-4",
+          "sidebar-scroll flex-1 space-y-6 overflow-y-auto py-4",
           collapsed ? "px-2" : "px-3",
         )}
       >
         {groups.map((g) => (
-          <div key={g} className="space-y-1.5">
+          <div key={g} className="space-y-1">
             {!collapsed && (
-              <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
                 {GROUP_LABELS[g]}
               </p>
             )}
@@ -242,27 +264,25 @@ function SidebarContent({
           </div>
         ))}
       </nav>
-      {!collapsed && (
-        <div className="border-t border-sidebar-border p-4">
-          <div className="rounded-lg bg-sidebar-accent/50 p-3">
-            <p className="text-xs font-semibold text-sidebar-accent-foreground">
-              CareLivia CNMS v1.0
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Clinical Nutrition Decision Support System. Sesuai PERKENI, ESPEN,
-              ASPEN, KDIGO, WHO &amp; Kemenkes RI.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1">
-              <Badge variant="secondary" className="text-[10px]">
-                TKPI/DKBM
-              </Badge>
-              <Badge variant="secondary" className="text-[10px]">
-                AI Engine
-              </Badge>
+      <div className={cn("border-t border-sidebar-border py-3", collapsed ? "px-2" : "px-4")}>
+        {collapsed ? (
+          <div className="flex justify-center" title="Sistem Online">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-[11px] font-medium text-sidebar-foreground/70">
+                Sistem Online
+              </span>
+              <span className="truncate text-[10px] text-muted-foreground">
+                CareLivia CNMS v1.0
+              </span>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

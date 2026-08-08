@@ -16,7 +16,10 @@ import {
 export type { DiagnosisType, ActivityLevel, StressLevel, Gender };
 
 // ---------------------------------------------------------------------
-// ACTIVITY FACTOR (FA) — based on WHO / CareLivia adjusted
+// ACTIVITY FACTOR (FA) — DEPRECATED multiplicative table.
+// Kept only so old imports don't break; the calorie engine (v3.0) no
+// longer uses this. See ACTIVITY_CORRECTION_PCT in calorie-engine.ts for
+// the additive correction table (CareLivia Energy Calculator v3.0).
 // ---------------------------------------------------------------------
 export const ACTIVITY_FACTOR: Record<ActivityLevel, number> = {
   BED_REST: 1.1,
@@ -35,7 +38,10 @@ export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
 };
 
 // ---------------------------------------------------------------------
-// STRESS FACTOR (FS) — based on ESPEN/ASPEN clinical stress
+// STRESS FACTOR (FS) — DEPRECATED multiplicative table.
+// Kept only so old imports don't break; the calorie engine (v3.0) no
+// longer uses this. See STRESS_CORRECTION_PCT in calorie-engine.ts for
+// the additive correction table (CareLivia Energy Calculator v3.0).
 // ---------------------------------------------------------------------
 export const STRESS_FACTOR: Record<StressLevel, number> = {
   NONE: 1.0,
@@ -284,13 +290,19 @@ export const DIAGNOSIS_ADJUSTMENTS: Record<DiagnosisType, DiagnosisAdjustment> =
   OBESITY: {
     label: "Obesitas",
     icd: "E66",
-    calFactor: 0.85,
+    // v3.0: calFactor tidak lagi dipakai sebagai pengali kalori untuk
+    // obesitas — defisit weight-loss dihitung sebagai pengurangan kkal
+    // ABSOLUT terpisah (default -500 kcal/hari, ADA 2026) yang diterapkan
+    // SETELAH Estimated Energy Requirement, dengan safety check. Ini
+    // mencegah double counting antara koreksi berat badan (-20% BMI
+    // Obesitas) dan defisit weight-loss. Lihat computeCalorieTarget().
+    calFactor: 1.0,
     proteinPerKg: [1.2, 1.5],
     fatPct: [20, 30],
     carbPct: [40, 50],
     fiberTarget: 30,
     sodiumMax: 2300,
-    notes: "Defisit 500-750 kcal/hari, protein tinggi preservasi otot.",
+    notes: "Defisit 500-750 kcal/hari (diterapkan terpisah dari faktor BMI), protein tinggi preservasi otot.",
     forbidden: ["gula", "gorengan", "fast food"],
     recommended: ["sayur", "protein lean", "biji-bijian"],
   },
@@ -488,7 +500,11 @@ export const MET_TABLE: Record<string, { name: string; met: number; type: string
 };
 
 // ---------------------------------------------------------------------
-// AGE-BASED CALORIE ADJUSTMENT (CareLivia correction)
+// AGE-BASED CALORIE ADJUSTMENT — DEPRECATED continuous multiplier.
+// Replaced in Calorie Engine v3.0 by the discrete additive age-correction
+// table (PERKENI-aligned: <40=0%, 40-59=-5%, 60-69=-10%, ≥70=-20%), see
+// AGE_CORRECTION_PCT in calorie-engine.ts. Kept only so old imports
+// don't break; no longer called by computeCalorieTarget.
 // ---------------------------------------------------------------------
 export function ageCorrectionFactor(ageYears: number, gender: Gender): number {
   if (ageYears <= 30) return 1.0;
@@ -498,11 +514,18 @@ export function ageCorrectionFactor(ageYears: number, gender: Gender): number {
 }
 
 // ---------------------------------------------------------------------
-// IDEAL BODY WEIGHT (BBI) — CareLivia formula (Indonesia-adapted Broca)
+// IDEAL BODY WEIGHT (BBI) — PERKENI 2024 formula (Broca modification)
+// BBI = 90% × (TB − 100) for BOTH sexes.
+// Exception (per PERKENI): if male & height <160cm, or female & height
+// <150cm, use BBI = TB − 100 (no 90% correction) to avoid under-estimating
+// ideal weight for shorter stature.
+// Ref: PERKENI 2024, Pedoman Pengelolaan dan Pencegahan DM Tipe 2 Dewasa.
 // ---------------------------------------------------------------------
 export function idealBodyWeight(heightCm: number, gender: Gender): number {
   const base = heightCm - 100;
-  return gender === "MALE" ? base * 0.9 : base * 0.85;
+  const isShortException =
+    (gender === "MALE" && heightCm < 160) || (gender === "FEMALE" && heightCm < 150);
+  return isShortException ? base : base * 0.9;
 }
 
 // ---------------------------------------------------------------------

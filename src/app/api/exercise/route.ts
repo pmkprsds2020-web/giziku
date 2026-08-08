@@ -1,17 +1,27 @@
 import { NextRequest } from "next/server";
 import { ok, err, handleZod } from "@/lib/api-helpers";
-import { MET_TABLE, type DiagnosisType } from "@/lib/clinical/constants";
+import { type DiagnosisType } from "@/lib/clinical/constants";
 import { computeCalorieTarget } from "@/lib/clinical/calorie-engine";
+import {
+  planExerciseForPatient,
+  buildExerciseAuditTrail,
+  type ClinicalFlags,
+  type ExerciseTargetInput,
+} from "@/lib/clinical/exercise-target";
 import {
   supabaseGetPatient,
   supabaseListExercisePlans,
   supabaseCreateExercisePlan,
+  supabaseGetLatestBouchardAssessment,
   resolvePatientId,
 } from "@/lib/supabase/data-layer";
 
 // ---------------------------------------------------------------------
 // Exercise Plan Generator
-// Considers diagnosis, age, BMI, ECOG, Barthel, frailty, fall risk
+// Considers diagnosis, age, BMI, ECOG, Barthel, frailty, fall risk, AND
+// (priority) Bouchard Activity Record — via the Exercise Target Engine
+// (src/lib/clinical/exercise-target.ts), which is the single source of
+// truth shared with /api/ai/exercise-plan.
 // ALL data comes from Supabase — falls back to Prisma only if unavailable.
 // ---------------------------------------------------------------------
 
@@ -66,8 +76,9 @@ export async function POST(req: NextRequest) {
       .map((d: any) => d.type) as DiagnosisType[];
     const assessment = (patient.assessments || [])[0];
 
-    // Target calories to burn: ~15-30% of daily target
-    // Derive activity & stress from assessment (with clinical fallbacks)
+    // Derive activity & stress from assessment (with clinical fallbacks) —
+    // used for the DAILY CALORIE target (computeCalorieTarget), which is a
+    // separate concern from the EXERCISE target computed below.
     let activity = "LIGHT" as string;
     let stress = "NONE" as string;
     if (assessment) {
@@ -86,6 +97,20 @@ export async function POST(req: NextRequest) {
       if (assessment.stress) stress = assessment.stress;
     }
 
+    // ---------------------------------------------------------------
+    // Bouchard Activity Record (priority input for both the calorie
+    // engine's activity correction AND the exercise target) — never
+    // blocks plan creation if unavailable (fallback chain lives inside
+    // the exercise-target engine, and computeCalorieTarget falls back to
+    // the manually selected `activity` level).
+    // ---------------------------------------------------------------
+    let bouchard: any = null;
+    try {
+      bouchard = await supabaseGetLatestBouchardAssessment(resolvedPatientId);
+    } catch (e) {
+      console.warn("[exercise] Bouchard lookup failed (non-fatal):", e);
+    }
+
     const calResult = computeCalorieTarget({
       gender: patient.gender,
       ageYears,
@@ -97,71 +122,76 @@ export async function POST(req: NextRequest) {
       isPregnant: patient.isPregnant,
       pregnancyTrimester: patient.pregnancyTrimester,
       isLactating: patient.isLactating,
+      bouchardPalCategory: bouchard?.palCategory ?? undefined,
     });
-    const targetBurned = Math.round(calResult.targetCalorie * 0.2);
 
-    // Adjust exercise selection based on clinical status
     const ecog = assessment?.ecog;
     const barthel = assessment?.barthel ?? 100;
     const frailty = assessment?.frailty;
     const fallRisk = assessment?.fallRisk;
+    const cfs = assessment?.cfs;
+
+    const targetInput: ExerciseTargetInput = {
+      weightKg: patient.weight,
+      ageYears,
+      bmi,
+      dailyCalorieTarget: calResult.targetCalorie,
+      pal: bouchard?.avgPal ?? null,
+      palCategory: bouchard?.palCategory ?? null,
+      activityLevel: activity,
+      ecog,
+      barthel,
+      karnofsky: assessment?.karnofsky ?? null,
+      pps: assessment?.pps ?? null,
+      frailty,
+      cfs,
+      fallRisk,
+      diagnoses,
+    };
 
     const isFrail = frailty === "Frail" || frailty === "Prefrail";
     const highFallRisk = fallRisk === "High" || barthel < 60;
-    const limitedMobility = ecog === "3" || ecog === "4" || barthel < 40;
+    const limitedMobility = ecog === "3" || ecog === "4" || Number(ecog) >= 3 || barthel < 40;
 
-    // Calories burned formula: MET * weight(kg) * duration(min) / 60
-    const buildItem = (key: string, duration: number) => {
-      const m = MET_TABLE[key];
-      const met = m?.met ?? 3;
-      const burned = (met * patient.weight! * duration) / 60;
-      return {
-        name: m?.name ?? key,
-        type: m?.type ?? "AEROBIC",
-        intensity: duration >= 30 ? "MODERATE" : "LOW",
-        duration,
-        caloriesBurned: Math.round(burned),
-        met,
-      };
+    const clinicalFlags: ClinicalFlags = {
+      limitedMobility,
+      isFrail,
+      highFallRisk,
+      bmi,
+      ageYears,
+      diagnoses,
     };
 
-    type Item = ReturnType<typeof buildItem>;
+    const { target, duration, notes } = planExerciseForPatient(targetInput, clinicalFlags);
 
-    const items: Item[] = [];
-    if (limitedMobility) {
-      items.push(buildItem("stretching", 10));
-      items.push(buildItem("balance_exercise", 10));
-      items.push(buildItem("functional_training", 10));
-    } else if (isFrail || highFallRisk) {
-      items.push(buildItem("walking", 15));
-      items.push(buildItem("balance_exercise", 10));
-      items.push(buildItem("resistance_band", 10));
-      items.push(buildItem("taichi", 15));
-    } else if (bmi >= 27 || diagnoses.includes("DM" as DiagnosisType) || diagnoses.includes("HT" as DiagnosisType)) {
-      items.push(buildItem("brisk_walk", 30));
-      items.push(buildItem("light_weights", 15));
-      items.push(buildItem("stretching", 10));
-      if (bmi < 35) items.push(buildItem("cycling", 20));
-    } else if (ageYears >= 65) {
-      items.push(buildItem("walking", 25));
-      items.push(buildItem("resistance_band", 15));
-      items.push(buildItem("balance_exercise", 10));
-      items.push(buildItem("yoga", 15));
-    } else {
-      items.push(buildItem("brisk_walk", 30));
-      items.push(buildItem("moderate_weights", 20));
-      items.push(buildItem("stretching", 10));
-      items.push(buildItem("cycling", 20));
-    }
+    const targetBurned = target.targetBurned;
+    const totalBurned = duration.actualBurned;
+    const items = duration.items;
 
-    const totalBurned = items.reduce((s, i) => s + i.caloriesBurned, 0);
-    const notes = `Berdasarkan BMI ${Math.round(bmi * 10) / 10}, ECOG ${ecog ?? "?"}, Barthel ${barthel}, frailty ${frailty ?? "?"}.`;
+    const clinicalNote = `Berdasarkan BMI ${Math.round(bmi * 10) / 10}, ECOG ${ecog ?? "?"}, Barthel ${barthel}, frailty ${frailty ?? "?"}${bouchard ? `, PAL Bouchard ${bouchard.avgPal} (${bouchard.palCategory})` : ""}.`;
+    const combinedNotes = `${notes} ${clinicalNote}`.trim();
+
+    const planDetails = buildExerciseAuditTrail({
+      dailyCalorieTarget: calResult.targetCalorie,
+      target,
+      duration,
+      bouchard: bouchard
+        ? {
+            avgPal: bouchard.avgPal,
+            palCategory: bouchard.palCategory,
+            avgEnergyExpenditure: bouchard.avgEnergyExpenditure,
+            whoStatus: bouchard.whoStatus,
+            assessmentDate: bouchard.assessmentDate,
+          }
+        : null,
+    });
 
     const planData = {
       patientId: resolvedPatientId,
       targetBurned,
       totalBurned,
-      notes,
+      notes: combinedNotes,
+      planDetails,
     };
 
     const { data: exercisePlan, error: saveError } = await supabaseCreateExercisePlan(planData, items);
@@ -176,8 +206,17 @@ export async function POST(req: NextRequest) {
             date: new Date(),
             targetBurned,
             totalBurned,
-            notes,
-            items: { create: items as any },
+            notes: combinedNotes,
+            items: {
+              create: items.map((i) => ({
+                name: i.name,
+                type: i.type,
+                intensity: i.intensity,
+                duration: i.duration,
+                caloriesBurned: i.caloriesBurned,
+                met: i.met,
+              })) as any,
+            },
           },
           include: { items: true },
         });
@@ -185,6 +224,7 @@ export async function POST(req: NextRequest) {
           plan: prismaPlan,
           targetBurned,
           totalBurned,
+          planDetails,
           savedTo: "Local cache (login required for Supabase)",
         });
       } catch (prismaErr: any) {
@@ -192,7 +232,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return ok({ plan: exercisePlan, targetBurned, totalBurned, savedTo: "Supabase PostgreSQL" });
+    return ok({ plan: exercisePlan, targetBurned, totalBurned, planDetails, savedTo: "Supabase PostgreSQL" });
   } catch (e) {
     return handleZod(e);
   }
