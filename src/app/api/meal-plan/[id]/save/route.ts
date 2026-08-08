@@ -62,9 +62,13 @@ export async function POST(
     if (!parsed.success) return handleZod(parsed.error);
     const d = parsed.data;
 
-    if (d.items.length === 0 && d.deletedItemIds.length === 0) {
-      return err("Tidak ada perubahan untuk disimpan", 422);
-    }
+    // Note: the "Simpan Meal Plan" button is always enabled now (manual
+    // save, no `dirty` gate), so a save request with an unchanged item
+    // list — or even zero items, e.g. an intentionally emptied plan —
+    // is a normal, valid request and must not be rejected as an error.
+    // fn_save_meal_plan_draft() upserts by item id and only removes
+    // items explicitly listed in deletedItemIds, so re-submitting the
+    // same draft is idempotent and never duplicates items.
 
     // STEP 1 — atomic save (items + totals + history snapshot)
     const { data: plan, error: saveError } = await supabaseSaveMealPlanDraft(
@@ -93,7 +97,7 @@ export async function POST(
           totalCarb: plan.totalCarb,
           totalFiber: plan.totalFiber,
           totalSodium: plan.totalSodium,
-          notes: `Disimpan otomatis dari Meal Plan Editor (${new Date().toLocaleString("id-ID")})`,
+          notes: `Disimpan dari Meal Plan Editor (${new Date().toLocaleString("id-ID")})`,
           items: (plan.items || []).map((i: any) => ({
             slot: i.slot,
             foodId: i.foodId,

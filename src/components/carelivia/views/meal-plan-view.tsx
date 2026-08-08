@@ -1149,13 +1149,12 @@ function GroupCoverageCard({
 //
 // Design: edits (gram change, food swap, add, delete) update local
 // `draft` state immediately for realtime totals/macro/Isi Piringku
-// recompute. They're persisted two ways: a manual "Simpan Meal Plan"
-// click, OR automatically ~1000ms after the person stops editing
-// (see the debounced effect in handleSave below) — "Simpan Draft
-// Otomatis". Both paths call /api/meal-plan/[id]/save, which applies
-// everything atomically (fn_save_meal_plan_draft), writes a Riwayat
-// Meal Plan snapshot, syncs the Saved Meal Library, and refreshes the
-// Shopping Planner if one already exists.
+// recompute. Nothing is persisted until the person clicks "Simpan
+// Meal Plan" — this is a full manual save, there is no auto-save.
+// That click calls /api/meal-plan/[id]/save, which applies everything
+// atomically (fn_save_meal_plan_draft), writes a Riwayat Meal Plan
+// snapshot, syncs the Saved Meal Library, and refreshes the Shopping
+// Planner if one already exists.
 // ---------------------------------------------------------------------
 
 type NutrientPer100 = {
@@ -1354,8 +1353,7 @@ function LatestMealPlanEditor({ plan }: { plan: any }) {
     toast.message("Perubahan draft dibatalkan");
   };
 
-  const handleSave = async (opts?: { auto?: boolean }) => {
-    const auto = opts?.auto ?? false;
+  const handleSave = async () => {
     const deletedItemIds = serverItems
       .map((it: any) => it.id as string)
       .filter((id: string) => !draft.some((d) => d.id === id));
@@ -1390,39 +1388,17 @@ function LatestMealPlanEditor({ plan }: { plan: any }) {
         toast.warning("Meal plan tersimpan, dengan catatan", {
           description: w.join(" · "),
         });
-      } else if (auto) {
-        // Auto-save: unobtrusive confirmation only — the person didn't
-        // ask for this save, so it shouldn't interrupt them like a
-        // manual "Simpan Meal Plan" click does.
-        toast.success("Tersimpan otomatis", { duration: 1500 });
       } else {
-        toast.success("Meal plan tersimpan ke database, Riwayat, Saved Meal Library" +
+        toast.success("Meal plan berhasil disimpan ke database, Riwayat, Saved Meal Library" +
           (res?.shoppingSynced ? ", dan Shopping Planner" : ""));
       }
     } catch (e: any) {
-      if (!auto) {
-        toast.error(e.message || "Gagal menyimpan meal plan");
-      }
-      // Auto-save failures stay silent — the "Ada perubahan belum
-      // tersimpan" banner already tells the person their edits aren't
-      // saved yet, and the next debounce tick (or manual save) retries.
+      // Save failed — keep the local draft and `dirty` state exactly as
+      // they were so the person's edits are never lost; they can retry
+      // by clicking "Simpan Meal Plan" again.
+      toast.error(e.message || "Gagal menyimpan meal plan. Silakan coba lagi.");
     }
   };
-
-  // ---------------------------------------------------------------------
-  // Auto-save draft: 1000ms after the person stops editing (gram change,
-  // food swap, add, delete), persist automatically — matches "Simpan
-  // Draft Otomatis" so nothing is lost to a refresh/navigation between
-  // edits and the next manual save.
-  // ---------------------------------------------------------------------
-  React.useEffect(() => {
-    if (!dirty || saveMut.isPending) return;
-    const timer = setTimeout(() => {
-      handleSave({ auto: true });
-    }, 1000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, dirty]);
 
   return (
     <SectionCard
@@ -1466,7 +1442,7 @@ function LatestMealPlanEditor({ plan }: { plan: any }) {
           <Info className="h-4 w-4 text-amber-600" />
           <AlertTitle className="text-sm">Ada perubahan belum tersimpan</AlertTitle>
           <AlertDescription className="text-xs">
-            Akan tersimpan otomatis ke database sesaat lagi, atau tekan "Simpan Meal Plan" sekarang.
+            Perubahan Anda masih berada di draft. Tekan "Simpan Meal Plan" untuk menyimpan ke database.
           </AlertDescription>
         </Alert>
       )}
@@ -1508,7 +1484,7 @@ function LatestMealPlanEditor({ plan }: { plan: any }) {
                 <X className="mr-1.5 h-3.5 w-3.5" /> Batal
               </Button>
             )}
-            <Button onClick={() => handleSave()} size="sm" disabled={!dirty || saveMut.isPending}>
+            <Button onClick={() => handleSave()} size="sm" disabled={saveMut.isPending}>
               <Save className="mr-1.5 h-4 w-4" />
               {saveMut.isPending ? "Menyimpan…" : "Simpan Meal Plan"}
             </Button>
